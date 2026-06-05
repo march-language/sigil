@@ -1,0 +1,23 @@
+mod Md do
+
+  type Inline
+    = Text(String)
+    | Emph(List(Inline))
+    | Strong(List(Inline))
+    | Code(String)
+    | Link(String, String, List(Inline))
+    | Image(String, String, String)
+    | HardBreak
+    | SoftBreak
+
+  type Block
+    = Heading(Int, String, List(Inline))
+    | Para(List(Inline))
+    | CodeBlock(String, String)
+    | BulletList(List(List(Block)))
+    | OrdList(Int, List(List(Block)))
+    | Quote(List(Block))
+    | ThematicBreak
+    | RawHtml(String)
+
+end

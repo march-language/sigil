@@ -1,0 +1,85 @@
+mod MdRender do
+
+  fn render(blocks : List(Block)) : IOList do
+    Html.list(blocks, fn b -> render_block(b))
+  end
+
+  pfn render_block(block : Block) : IOList do
+    match block do
+    Heading(level, id, inlines) ->
+      let tag = "h" ++ int_to_string(level)
+      let open_tag = "<" ++ tag ++ " id=\"" ++ Html.escape_attr(id) ++ "\">"
+      let close_tag = "</" ++ tag ++ ">"
+      IOList.from_string(open_tag)
+      |> IOList.append(render_inlines(inlines))
+      |> IOList.append(IOList.from_string(close_tag))
+    Para(inlines) ->
+      IOList.from_string("<p>")
+      |> IOList.append(render_inlines(inlines))
+      |> IOList.append(IOList.from_string("</p>"))
+    CodeBlock(lang, body) ->
+      let escaped = Html.escape(body)
+      let class_attr = if String.is_empty(lang) do ""
+                       else " class=\"language-" ++ Html.escape_attr(lang) ++ "\""
+                       end
+      IOList.from_string("<pre><code" ++ class_attr ++ ">" ++ escaped ++ "</code></pre>")
+    BulletList(items) ->
+      IOList.from_string("<ul>")
+      |> IOList.append(Html.list(items, fn item -> render_item(item)))
+      |> IOList.append(IOList.from_string("</ul>"))
+    OrdList(start, items) ->
+      let attr = if start == 1 do "" else " start=\"" ++ int_to_string(start) ++ "\"" end
+      IOList.from_string("<ol" ++ attr ++ ">")
+      |> IOList.append(Html.list(items, fn item -> render_item(item)))
+      |> IOList.append(IOList.from_string("</ol>"))
+    Quote(inner) ->
+      IOList.from_string("<blockquote>")
+      |> IOList.append(render(inner))
+      |> IOList.append(IOList.from_string("</blockquote>"))
+    ThematicBreak ->
+      IOList.from_string("<hr>")
+    RawHtml(html) ->
+      IOList.from_string(html)
+    end
+  end
+
+  pfn render_item(blocks : List(Block)) : IOList do
+    IOList.from_string("<li>")
+    |> IOList.append(render(blocks))
+    |> IOList.append(IOList.from_string("</li>"))
+  end
+
+  fn render_inlines(inlines : List(Inline)) : IOList do
+    Html.list(inlines, fn i -> render_inline(i))
+  end
+
+  pfn render_inline(inline : Inline) : IOList do
+    match inline do
+    Text(s)    -> IOList.from_string(Html.escape(s))
+    Code(s)    -> IOList.from_string("<code>" ++ Html.escape(s) ++ "</code>")
+    Emph(inlines) ->
+      IOList.from_string("<em>")
+      |> IOList.append(render_inlines(inlines))
+      |> IOList.append(IOList.from_string("</em>"))
+    Strong(inlines) ->
+      IOList.from_string("<strong>")
+      |> IOList.append(render_inlines(inlines))
+      |> IOList.append(IOList.from_string("</strong>"))
+    Link(url, title, inlines) ->
+      let title_attr = if String.is_empty(title) do ""
+                       else " title=\"" ++ Html.escape_attr(title) ++ "\""
+                       end
+      IOList.from_string("<a href=\"" ++ Html.escape_attr(url) ++ "\"" ++ title_attr ++ ">")
+      |> IOList.append(render_inlines(inlines))
+      |> IOList.append(IOList.from_string("</a>"))
+    Image(url, alt, title) ->
+      let title_attr = if String.is_empty(title) do ""
+                       else " title=\"" ++ Html.escape_attr(title) ++ "\""
+                       end
+      IOList.from_string("<img src=\"" ++ Html.escape_attr(url) ++ "\" alt=\"" ++ Html.escape_attr(alt) ++ "\"" ++ title_attr ++ ">")
+    HardBreak -> IOList.from_string("<br>")
+    SoftBreak -> IOList.from_string(" ")
+    end
+  end
+
+end

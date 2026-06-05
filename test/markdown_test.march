@@ -1,0 +1,72 @@
+mod TestMd do
+
+  describe "MdRender" do
+    test "renders Para with text" do
+      let blocks = Cons(Para(Cons(Inline.Text("hello"), Nil)), Nil)
+      let html = IOList.to_string(MdRender.render(blocks))
+      assert (String.contains(html, "<p>hello</p>"))
+    end
+
+    test "escapes special chars in Text" do
+      let blocks = Cons(Para(Cons(Inline.Text("<b>&foo</b>"), Nil)), Nil)
+      let html = IOList.to_string(MdRender.render(blocks))
+      assert (String.contains(html, "&lt;b&gt;&amp;foo&lt;/b&gt;"))
+      assert (not (String.contains(html, "<b>")))
+    end
+
+    test "renders Heading level 1" do
+      let blocks = Cons(Heading(1, "hello-world", Cons(Inline.Text("Hello World"), Nil)), Nil)
+      let html = IOList.to_string(MdRender.render(blocks))
+      assert (String.contains(html, "<h1"))
+      assert (String.contains(html, "id=\"hello-world\""))
+      assert (String.contains(html, "Hello World"))
+      assert (String.contains(html, "</h1>"))
+    end
+
+    test "renders Heading level 3" do
+      let blocks = Cons(Heading(3, "sec", Cons(Inline.Text("Sec"), Nil)), Nil)
+      let html = IOList.to_string(MdRender.render(blocks))
+      assert (String.contains(html, "<h3"))
+      assert (String.contains(html, "</h3>"))
+    end
+
+    test "renders CodeBlock with language" do
+      let blocks = Cons(CodeBlock("march", "fn f(x) do x end"), Nil)
+      let html = IOList.to_string(MdRender.render(blocks))
+      assert (String.contains(html, "<pre><code"))
+      assert (String.contains(html, "language-march"))
+      assert (String.contains(html, "fn f(x) do x end"))
+      assert (String.contains(html, "</code></pre>"))
+    end
+
+    test "escapes code block body" do
+      let blocks = Cons(CodeBlock("", "<script>alert(1)</script>"), Nil)
+      let html = IOList.to_string(MdRender.render(blocks))
+      assert (String.contains(html, "&lt;script&gt;"))
+      assert (not (String.contains(html, "<script>")))
+    end
+
+    test "renders ThematicBreak" do
+      let blocks = Cons(ThematicBreak, Nil)
+      let html = IOList.to_string(MdRender.render(blocks))
+      assert (String.contains(html, "<hr"))
+    end
+
+    test "renders inline Code" do
+      let blocks = Cons(Para(Cons(Code("x + 1"), Nil)), Nil)
+      let html = IOList.to_string(MdRender.render(blocks))
+      assert (String.contains(html, "<code>x + 1</code>"))
+    end
+
+    test "renders multiple blocks in sequence" do
+      let blocks = Cons(Heading(1, "h", Cons(Inline.Text("H"), Nil)),
+                   Cons(Para(Cons(Inline.Text("p"), Nil)),
+                   Cons(ThematicBreak, Nil)))
+      let html = IOList.to_string(MdRender.render(blocks))
+      assert (String.contains(html, "<h1"))
+      assert (String.contains(html, "<p>"))
+      assert (String.contains(html, "<hr"))
+    end
+  end
+
+end
