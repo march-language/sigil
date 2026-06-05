@@ -1,0 +1,13 @@
+mod TestSigil do
+
+  import Config
+
+  describe "Config" do
+    test "default uses standard dirs" do
+      let s = Config.default()
+      assert (s.content_dir == "content")
+      assert (s.output_dir == "out")
+    end
+  end
+
+end
