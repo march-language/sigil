@@ -1,0 +1,149 @@
+{
+  "nodes": [
+    {
+      "id": 1,
+      "change_id": "51aecbda-f5f8-413a-950c-a062ca2ac80d",
+      "node_type": "goal",
+      "title": "Name the March SSG project",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-06-05T10:28:13.951299-04:00",
+      "updated_at": "2026-06-05T10:28:13.951299-04:00",
+      "metadata_json": "{\"confidence\":100,\"prompt\":\"User asked: I need a name first\"}"
+    },
+    {
+      "id": 2,
+      "change_id": "8db61668-8842-40fe-83d3-dbf946eb9023",
+      "node_type": "decision",
+      "title": "Name chosen: sigil",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-06-05T10:28:13.986013-04:00",
+      "updated_at": "2026-06-05T10:28:13.986013-04:00",
+      "metadata_json": "{\"confidence\":100,\"prompt\":\"Selected from brainstorm list; resonates with March's ~H sigil syntax\"}"
+    },
+    {
+      "id": 3,
+      "change_id": "a3f5bb36-2d7f-47d0-90bc-1d7f77e0da24",
+      "node_type": "decision",
+      "title": "Layout model: user-provided layout.march compiled with Sigil stdlib",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-06-05T10:29:34.437609-04:00",
+      "updated_at": "2026-06-05T10:29:34.437609-04:00",
+      "metadata_json": "{\"confidence\":100,\"prompt\":\"Option A chosen over interpreted snippets\"}"
+    },
+    {
+      "id": 4,
+      "change_id": "345561d5-7c99-43d0-a4a6-4deb9b0b2844",
+      "node_type": "decision",
+      "title": "Two-pass build: Pass 1 collects page metadata into site_index, Pass 2 renders all pages + collection indexes",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-06-05T10:29:34.477415-04:00",
+      "updated_at": "2026-06-05T10:29:34.477415-04:00",
+      "metadata_json": "{\"confidence\":100}"
+    },
+    {
+      "id": 5,
+      "change_id": "ad255cbe-71cd-4567-8077-3662d55d0671",
+      "node_type": "decision",
+      "title": "CommonMark fidelity: pragmatic subset, deviations documented in SPEC_DEVIATIONS.md",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-06-05T10:35:19.559616-04:00",
+      "updated_at": "2026-06-05T10:35:19.559616-04:00",
+      "metadata_json": "{\"confidence\":100}"
+    },
+    {
+      "id": 6,
+      "change_id": "d0ecbd94-0a71-48f3-8b72-74688473eed3",
+      "node_type": "decision",
+      "title": "Syntax highlighting: client-side JS for M1-M4, revisit later",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-06-05T10:35:19.599825-04:00",
+      "updated_at": "2026-06-05T10:35:19.599825-04:00",
+      "metadata_json": "{\"confidence\":100}"
+    },
+    {
+      "id": 7,
+      "change_id": "8d59ee08-d13c-432a-9c36-cd8bd87476ba",
+      "node_type": "decision",
+      "title": "Front-matter: YAML first, delimiter detection (--- vs +++) for future TOML",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-06-05T10:35:19.634778-04:00",
+      "updated_at": "2026-06-05T10:35:19.634778-04:00",
+      "metadata_json": "{\"confidence\":100}"
+    },
+    {
+      "id": 8,
+      "change_id": "481f6c89-c032-4f90-a8b3-e671a393edf2",
+      "node_type": "goal",
+      "title": "Implement Sigil M0: scaffold module structure and build pipeline that reads content/*.md, wraps in Html.layout, writes out/",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-06-05T11:38:04.927367-04:00",
+      "updated_at": "2026-06-05T11:38:04.927367-04:00",
+      "metadata_json": "{\"confidence\":90,\"prompt\":\"do it\"}"
+    },
+    {
+      "id": 9,
+      "change_id": "91854ac4-db00-423a-b436-84c79a4b9127",
+      "node_type": "action",
+      "title": "Implementing Sigil M0: Config, Build, Ssg modules",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-06-05T12:27:21.295175-04:00",
+      "updated_at": "2026-06-05T12:27:21.295175-04:00",
+      "metadata_json": "{\"confidence\":85,\"files\":[\"lib/config.march\",\"lib/build.march\",\"lib/sigil.march\",\"test/sigil_test.march\"]}"
+    },
+    {
+      "id": 10,
+      "change_id": "56f67a28-96cc-4038-8dc7-e9d3a8e26c42",
+      "node_type": "outcome",
+      "title": "M0 complete: 3 modules (Config/Build/Ssg), 11 passing tests, binary builds and runs",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-06-05T12:45:03.191121-04:00",
+      "updated_at": "2026-06-05T12:45:03.191121-04:00",
+      "metadata_json": "{\"branch\":\"main\",\"commit\":\"3351cfc\",\"confidence\":95}"
+    }
+  ],
+  "edges": [
+    {
+      "id": 1,
+      "from_node_id": 1,
+      "to_node_id": 2,
+      "from_change_id": "51aecbda-f5f8-413a-950c-a062ca2ac80d",
+      "to_change_id": "8db61668-8842-40fe-83d3-dbf946eb9023",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "Naming decision follows from naming goal",
+      "created_at": "2026-06-05T10:28:20.485403-04:00"
+    },
+    {
+      "id": 2,
+      "from_node_id": 8,
+      "to_node_id": 9,
+      "from_change_id": "481f6c89-c032-4f90-a8b3-e671a393edf2",
+      "to_change_id": "91854ac4-db00-423a-b436-84c79a4b9127",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "M0 implementation",
+      "created_at": "2026-06-05T12:27:21.306443-04:00"
+    },
+    {
+      "id": 3,
+      "from_node_id": 9,
+      "to_node_id": 10,
+      "from_change_id": "91854ac4-db00-423a-b436-84c79a4b9127",
+      "to_change_id": "56f67a28-96cc-4038-8dc7-e9d3a8e26c42",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "Implementation complete",
+      "created_at": "2026-06-05T12:45:03.205532-04:00"
+    }
+  ]
+}

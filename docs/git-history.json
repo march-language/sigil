@@ -1,0 +1,10 @@
+[
+  {
+    "hash": "3351cfc08b87b6221319758cdc024f2b983dbae4",
+    "short_hash": "3351cfc",
+    "author": "Matthew Gilliam",
+    "date": "2026-06-05T12:44:59-04:00",
+    "message": "feat: add Ssg CLI entry with build subcommand and flag parsing",
+    "files_changed": 3
+  }
+]
