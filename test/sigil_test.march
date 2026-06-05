@@ -1,12 +1,76 @@
 mod TestSigil do
 
-  import Config
-
   describe "Config" do
     test "default uses standard dirs" do
       let s = Config.default()
       assert (s.content_dir == "content")
       assert (s.output_dir == "out")
+    end
+  end
+
+  describe "Build.run" do
+    test "run succeeds on two md files" do
+      let tmp = "/tmp/sigil_m0_" ++ to_string(System.monotonic_time())
+      let content_dir = Path.join(tmp, "content")
+      let output_dir  = Path.join(tmp, "out")
+      let _ = Dir.mkdir_p(content_dir)
+      let _ = File.write(Path.join(content_dir, "hello.md"), "<p>Hello</p>")
+      let _ = File.write(Path.join(content_dir, "world.md"), "<p>World</p>")
+      let site = { content_dir = content_dir, output_dir = output_dir }
+      let result = Build.run(site)
+      assert (match result do Ok(_) -> true | Err(_) -> false end)
+      let _ = Dir.rm_rf(tmp)
+    end
+
+    test "hello.html exists and contains body" do
+      let tmp = "/tmp/sigil_hello_" ++ to_string(System.monotonic_time())
+      let content_dir = Path.join(tmp, "content")
+      let output_dir  = Path.join(tmp, "out")
+      let _ = Dir.mkdir_p(content_dir)
+      let _ = File.write(Path.join(content_dir, "hello.md"), "<p>Hello</p>")
+      let site = { content_dir = content_dir, output_dir = output_dir }
+      let _ = Build.run(site)
+      let out_path = Path.join(output_dir, "hello.html")
+      let read_result = File.read(out_path)
+      assert (match read_result do Ok(_) -> true | Err(_) -> false end)
+      let html = match read_result do Ok(s) -> s | Err(_) -> "" end
+      assert (String.contains(html, "<p>Hello</p>"))
+      let _ = Dir.rm_rf(tmp)
+    end
+
+    test "output is a full html document" do
+      let tmp = "/tmp/sigil_doc_" ++ to_string(System.monotonic_time())
+      let content_dir = Path.join(tmp, "content")
+      let output_dir  = Path.join(tmp, "out")
+      let _ = Dir.mkdir_p(content_dir)
+      let _ = File.write(Path.join(content_dir, "page.md"), "hello")
+      let site = { content_dir = content_dir, output_dir = output_dir }
+      let _ = Build.run(site)
+      let html = match File.read(Path.join(output_dir, "page.html")) do
+                 Ok(s) -> s | Err(_) -> "" end
+      assert (String.contains(html, "<!DOCTYPE html>"))
+      let _ = Dir.rm_rf(tmp)
+    end
+
+    test "skips non-md files" do
+      let tmp = "/tmp/sigil_skip_" ++ to_string(System.monotonic_time())
+      let content_dir = Path.join(tmp, "content")
+      let output_dir  = Path.join(tmp, "out")
+      let _ = Dir.mkdir_p(content_dir)
+      let _ = File.write(Path.join(content_dir, "page.md"), "hello")
+      let _ = File.write(Path.join(content_dir, "style.css"), "body {}")
+      let site = { content_dir = content_dir, output_dir = output_dir }
+      let _ = Build.run(site)
+      let out_files = match Dir.list_full(output_dir) do
+                      Ok(fs) -> fs | Err(_) -> Nil end
+      assert (List.length(out_files) == 1)
+      let _ = Dir.rm_rf(tmp)
+    end
+
+    test "returns Err when content dir does not exist" do
+      let site = { content_dir = "/tmp/sigil_no_such_dir_xyz", output_dir = "/tmp/sigil_out_xyz" }
+      let result = Build.run(site)
+      assert (match result do Ok(_) -> false | Err(_) -> true end)
     end
   end
 

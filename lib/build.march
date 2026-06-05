@@ -1,0 +1,66 @@
+mod Build do
+
+  pfn fmt_err(e) : String do
+    to_string(e)
+  end
+
+  -- Path.extension uses a `Some(0)` literal pattern which crashes at runtime.
+  -- Use String.ends_with instead until the stdlib bug is fixed.
+  pfn is_md(path : String) : Bool do
+    String.ends_with(path, ".md")
+  end
+
+  -- Path.strip_extension has the same bug. Compute the slug directly.
+  pfn slug_of(path : String) : String do
+    let base = Path.basename(path)
+    match String.last_index_of(base, ".") do
+    None    -> base
+    Some(i) ->
+      if i == 0 do base
+      else String.slice_bytes(base, 0, i)
+      end
+    end
+  end
+
+  fn run(site : Config.Site) : Result(Unit, String) do
+    -- Extract fields up front so the record isn't re-passed through recursion.
+    let content_dir = site.content_dir
+    let output_dir  = site.output_dir
+    match Dir.mkdir_p(output_dir) do
+    Err(e) -> Err("cannot create output dir: " ++ fmt_err(e))
+    Ok(_) ->
+      match Dir.list_full(content_dir) do
+      Err(e) -> Err("cannot list content dir: " ++ fmt_err(e))
+      Ok(paths) ->
+        let md_paths = List.filter(paths, fn p -> is_md(p))
+        build_all(output_dir, md_paths)
+      end
+    end
+  end
+
+  pfn build_all(output_dir : String, paths : List(String)) : Result(Unit, String) do
+    match paths do
+    Nil -> Ok(())
+    Cons(src, rest) ->
+      match build_page(output_dir, src) do
+      Err(msg) -> Err(msg)
+      Ok(_)    -> build_all(output_dir, rest)
+      end
+    end
+  end
+
+  pfn build_page(output_dir : String, src : String) : Result(Unit, String) do
+    match File.read(src) do
+    Err(e) -> Err("cannot read " ++ src ++ ": " ++ fmt_err(e))
+    Ok(body) ->
+      let slug = slug_of(src)
+      let html = Html.layout(slug, IOList.empty(), IOList.from_string(body))
+      let out  = Path.join(output_dir, slug ++ ".html")
+      match File.write(out, IOList.to_string(html)) do
+      Err(e) -> Err("cannot write " ++ out ++ ": " ++ fmt_err(e))
+      Ok(_)  -> Ok(())
+      end
+    end
+  end
+
+end
