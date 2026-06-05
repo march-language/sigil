@@ -69,4 +69,65 @@ mod TestMd do
     end
   end
 
+  describe "MdRender additional variants" do
+    test "renders Emph" do
+      let blocks = Cons(Para(Cons(Emph(Cons(Inline.Text("hi"), Nil)), Nil)), Nil)
+      let html = IOList.to_string(MdRender.render(blocks))
+      assert (String.contains(html, "<em>hi</em>"))
+    end
+
+    test "renders Strong" do
+      let blocks = Cons(Para(Cons(Strong(Cons(Inline.Text("bold"), Nil)), Nil)), Nil)
+      let html = IOList.to_string(MdRender.render(blocks))
+      assert (String.contains(html, "<strong>bold</strong>"))
+    end
+
+    test "renders Link" do
+      let blocks = Cons(Para(Cons(Link("https://example.com", "", Cons(Inline.Text("click"), Nil)), Nil)), Nil)
+      let html = IOList.to_string(MdRender.render(blocks))
+      assert (String.contains(html, "<a href=\"https://example.com\""))
+      assert (String.contains(html, "click</a>"))
+    end
+
+    test "javascript: URL in Link is sanitized" do
+      let blocks = Cons(Para(Cons(Link("javascript:alert(1)", "", Cons(Inline.Text("x"), Nil)), Nil)), Nil)
+      let html = IOList.to_string(MdRender.render(blocks))
+      assert (not (String.contains(html, "javascript:")))
+    end
+
+    test "renders Image" do
+      let blocks = Cons(Para(Cons(Image("https://example.com/img.png", "alt text", ""), Nil)), Nil)
+      let html = IOList.to_string(MdRender.render(blocks))
+      assert (String.contains(html, "<img src=\"https://example.com/img.png\""))
+      assert (String.contains(html, "alt=\"alt text\""))
+    end
+
+    test "renders HardBreak" do
+      let blocks = Cons(Para(Cons(HardBreak, Nil)), Nil)
+      let html = IOList.to_string(MdRender.render(blocks))
+      assert (String.contains(html, "<br>"))
+    end
+
+    test "renders BulletList" do
+      let item = Cons(Para(Cons(Inline.Text("item"), Nil)), Nil)
+      let blocks = Cons(BulletList(Cons(item, Nil)), Nil)
+      let html = IOList.to_string(MdRender.render(blocks))
+      assert (String.contains(html, "<ul>"))
+      assert (String.contains(html, "<li>"))
+    end
+
+    test "renders Quote" do
+      let inner = Cons(Para(Cons(Inline.Text("quoted"), Nil)), Nil)
+      let blocks = Cons(Quote(inner), Nil)
+      let html = IOList.to_string(MdRender.render(blocks))
+      assert (String.contains(html, "<blockquote>"))
+    end
+
+    test "renders RawHtml passthrough" do
+      let blocks = Cons(RawHtml("<div class=\"custom\">raw</div>"), Nil)
+      let html = IOList.to_string(MdRender.render(blocks))
+      assert (String.contains(html, "<div class=\"custom\">raw</div>"))
+    end
+  end
+
 end
