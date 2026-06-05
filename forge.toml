@@ -1,0 +1,8 @@
+[package]
+name = "sigil"
+version = "0.1.0"
+type = "tool"
+description = ""
+author = ""
+
+[deps]

@@ -30,10 +30,8 @@ mod TestSigil do
       let _ = File.write(Path.join(content_dir, "hello.md"), "<p>Hello</p>")
       let site = { content_dir = content_dir, output_dir = output_dir }
       let _ = Build.run(site)
-      let out_path = Path.join(output_dir, "hello.html")
-      let read_result = File.read(out_path)
-      assert (match read_result do Ok(_) -> true | Err(_) -> false end)
-      let html = match read_result do Ok(s) -> s | Err(_) -> "" end
+      let html = match File.read(Path.join(output_dir, "hello.html")) do
+                 Ok(s) -> s | Err(_) -> "" end
       assert (String.contains(html, "<p>Hello</p>"))
       let _ = Dir.rm_rf(tmp)
     end
@@ -71,6 +69,53 @@ mod TestSigil do
       let site = { content_dir = "/tmp/sigil_no_such_dir_xyz", output_dir = "/tmp/sigil_out_xyz" }
       let result = Build.run(site)
       assert (match result do Ok(_) -> false | Err(_) -> true end)
+    end
+  end
+
+  describe "Ssg.parse_args" do
+    -- Simulate compiled argv: ["sigil", "build", ...]
+    test "build subcommand returns default site" do
+      let argv = Cons("sigil", Cons("build", Nil))
+      let result = Ssg.parse_args(argv)
+      assert (match result do
+              Ok(s) -> s.content_dir == "content" && s.output_dir == "out"
+              Err(_) -> false
+              end)
+    end
+
+    test "flags override defaults" do
+      let argv = Cons("sigil", Cons("build",
+                   Cons("--content-dir", Cons("src",
+                     Cons("--output-dir", Cons("dist", Nil))))))
+      let result = Ssg.parse_args(argv)
+      assert (match result do
+              Ok(s) -> s.content_dir == "src" && s.output_dir == "dist"
+              Err(_) -> false
+              end)
+    end
+
+    test "unknown subcommand returns Err" do
+      let argv = Cons("sigil", Cons("serve", Nil))
+      let result = Ssg.parse_args(argv)
+      assert (match result do Ok(_) -> false | Err(_) -> true end)
+    end
+
+    test "unknown flag returns Err" do
+      let argv = Cons("sigil",
+                   Cons("build", Cons("--foo", Cons("bar", Nil))))
+      let result = Ssg.parse_args(argv)
+      assert (match result do Ok(_) -> false | Err(_) -> true end)
+    end
+
+    -- Simulate interpreted argv: ["/march", "/path/to/sigil.march", "build", ...]
+    test "works when march binary and script are in argv" do
+      let argv = Cons("/usr/bin/march",
+                   Cons("/path/to/sigil.march", Cons("build", Nil)))
+      let result = Ssg.parse_args(argv)
+      assert (match result do
+              Ok(s) -> s.content_dir == "content" && s.output_dir == "out"
+              Err(_) -> false
+              end)
     end
   end
 

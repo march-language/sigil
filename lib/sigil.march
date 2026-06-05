@@ -1,0 +1,67 @@
+-- Entry point for the Sigil SSG.
+-- Named `Ssg` (not `Sigil`) to avoid shadowing the stdlib's Sigil sigil-handler module.
+
+mod Ssg do
+
+  fn parse_args(argv : List(String)) : Result(Config.Site, String) do
+    -- Drop the executable (and the script path in interpreted mode).
+    -- Both are absolute paths starting with '/'.
+    let args = drop_paths(argv)
+    let defaults = Config.default()
+    match args do
+    Nil ->
+      Err("usage: sigil build [--content-dir DIR] [--output-dir DIR]")
+    Cons("build", flags) ->
+      parse_flags(flags, defaults.content_dir, defaults.output_dir)
+    Cons(cmd, _) ->
+      Err("unknown subcommand: " ++ cmd)
+    end
+  end
+
+  -- Always drop argv[0] (executable name), then drop any abs-path args
+  -- (e.g. the script path injected by the March interpreter).
+  pfn drop_paths(argv : List(String)) : List(String) do
+    match argv do
+    Nil -> Nil
+    Cons(_, rest) -> drop_abs(rest)
+    end
+  end
+
+  pfn drop_abs(args : List(String)) : List(String) do
+    match args do
+    Nil -> Nil
+    Cons(s, rest) ->
+      if String.starts_with(s, "/") do drop_abs(rest)
+      else args
+      end
+    end
+  end
+
+  pfn parse_flags(args : List(String), content_dir : String, output_dir : String) : Result(Config.Site, String) do
+    match args do
+    Nil ->
+      Ok({ content_dir = content_dir, output_dir = output_dir })
+    Cons("--content-dir", Cons(val, rest)) ->
+      parse_flags(rest, val, output_dir)
+    Cons("--output-dir", Cons(val, rest)) ->
+      parse_flags(rest, content_dir, val)
+    Cons(flag, _) ->
+      Err("unknown flag: " ++ flag)
+    end
+  end
+
+  fn main() do
+    match parse_args(System.argv()) do
+    Err(msg) ->
+      println(msg)
+    Ok(site) ->
+      match Build.run(site) do
+      Err(msg) ->
+        println("error: " ++ msg)
+      Ok(_) ->
+        println("done.")
+      end
+    end
+  end
+
+end
