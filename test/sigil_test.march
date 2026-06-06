@@ -262,4 +262,42 @@ mod TestSigil do
     end
   end
 
+  describe "Watcher" do
+    test "version_path returns .sigil-reload in output dir" do
+      let p = Watcher.version_path("/tmp/out")
+      assert (p == "/tmp/out/.sigil-reload")
+    end
+
+    test "read_version returns 0 when file missing" do
+      let v = Watcher.read_version("/tmp/no_such_out_xyz")
+      assert (v == 0)
+    end
+
+    test "write_version then read_version roundtrip" do
+      let tmp = "/tmp/sigil_watcher_" ++ to_string(System.monotonic_time())
+      let _ = Dir.mkdir_p(tmp)
+      let _ = Watcher.write_version(tmp, 42)
+      let v  = Watcher.read_version(tmp)
+      assert (v == 42)
+      let _ = Dir.rm_rf(tmp)
+    end
+
+    test "max_mtime returns 0 for empty dir" do
+      let tmp = "/tmp/sigil_mtime_" ++ to_string(System.monotonic_time())
+      let _ = Dir.mkdir_p(tmp)
+      let m = Watcher.max_mtime(tmp)
+      assert (m == 0)
+      let _ = Dir.rm_rf(tmp)
+    end
+
+    test "max_mtime returns nonzero after writing a file" do
+      let tmp = "/tmp/sigil_mtime2_" ++ to_string(System.monotonic_time())
+      let _ = Dir.mkdir_p(tmp)
+      let _ = File.write(Path.join(tmp, "post.md"), "# Hello")
+      let m = Watcher.max_mtime(tmp)
+      assert (m > 0)
+      let _ = Dir.rm_rf(tmp)
+    end
+  end
+
 end

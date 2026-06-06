@@ -1,0 +1,66 @@
+mod Watcher do
+
+  fn version_path(output_dir : String) : String do
+    Path.join(output_dir, ".sigil-reload")
+  end
+
+  fn read_version(output_dir : String) : Int do
+    match File.read(version_path(output_dir)) do
+    Err(_) -> 0
+    Ok(s)  ->
+      match string_to_int(String.trim(s)) do
+      Some(n) -> n
+      None    -> 0
+      end
+    end
+  end
+
+  fn write_version(output_dir : String, n : Int) : Result(Unit, String) do
+    let path = output_dir ++ "/.sigil-reload"
+    let data = int_to_string(n)
+    match File.write(path, data) do
+    Err(e) -> Err(to_string(e))
+    Ok(_)  -> Ok(())
+    end
+  end
+
+  pfn mtime_acc(acc : Int, path : String) : Int do
+    match File.mtime(path) do
+    Err(_) -> acc
+    Ok(m)  -> if m > acc do m else acc end
+    end
+  end
+
+  fn max_mtime(dir : String) : Int do
+    match Dir.list_full(dir) do
+    Err(_)    -> 0
+    Ok(paths) ->
+      let md_paths = List.filter(paths, fn p -> String.ends_with(p, ".md"))
+      List.fold_left(md_paths, 0, fn (acc, path) -> mtime_acc(acc, path))
+    end
+  end
+
+  fn watch(site : Config.Site) : Unit do
+    let content_dir = site.content_dir
+    let output_dir  = site.output_dir
+    let static_dir  = site.static_dir
+    let initial     = max_mtime(content_dir)
+    watch_loop(content_dir, output_dir, static_dir, initial, 0)
+  end
+
+  pfn watch_loop(content_dir : String, output_dir : String, static_dir : String, last_mtime : Int, version : Int) : Unit do
+    let _ = System.cmd("sleep", Cons("0.3", Nil))
+    let current = max_mtime(content_dir)
+    if current > last_mtime do
+      let site = { content_dir = content_dir, output_dir = output_dir, static_dir = static_dir }
+      let _    = Build.run(site)
+      let next = version + 1
+      let _    = write_version(output_dir, next)
+      println("[sigil] rebuilt (v" ++ int_to_string(next) ++ ")")
+      watch_loop(content_dir, output_dir, static_dir, current, next)
+    else
+      watch_loop(content_dir, output_dir, static_dir, last_mtime, version)
+    end
+  end
+
+end
