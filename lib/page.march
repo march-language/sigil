@@ -1,0 +1,130 @@
+mod Page do
+
+  type Meta = {
+    title  : String,
+    date   : String,
+    layout : String,
+    tags   : List(String),
+    draft  : Bool
+  }
+
+  -- Derive the slug (filename without extension) from a source path.
+  pfn slug_of(src_path : String) : String do
+    let base = Path.basename(src_path)
+    match String.last_index_of(base, ".") do
+    None    -> base
+    Some(i) ->
+      if i == 0 do base
+      else String.slice_bytes(base, 0, i)
+      end
+    end
+  end
+
+  -- Scan the lines of a YAML string for a specific key and return its value.
+  -- Each line has the form "key: value" (simple YAML mapping).
+  pfn get_field(lines : List(String), key : String) : Option(String) do
+    match lines do
+    Nil -> None
+    Cons(line, rest) ->
+      match String.split_first(line, ": ") do
+      None ->
+        get_field(rest, key)
+      Some(pair) ->
+        match pair do
+        (k, v) ->
+          if string_trim(k) == key do
+            Some(string_trim(v))
+          else
+            get_field(rest, key)
+          end
+        end
+      end
+    end
+  end
+
+  -- Decode a YAML string into page metadata.
+  -- Uses `src_path` to derive the default title (slug from filename).
+  -- Missing fields get sensible defaults:
+  --   title  -> slug
+  --   date   -> ""
+  --   layout -> "default"
+  --   tags   -> Nil
+  --   draft  -> false
+  --
+  -- Uses a simple line-by-line "key: value" parser to avoid the Yaml module.
+  fn decode(src_path : String, yaml_str : String) : Meta do
+    let default_title = slug_of(src_path)
+    if yaml_str == "" do
+      { title  = default_title,
+        date   = "",
+        layout = "default",
+        tags   = Nil,
+        draft  = false }
+    else
+      let lines  = String.split(yaml_str, "\n")
+      -- Extract each field independently to avoid RC underflow from tuple lists.
+      let title  = match get_field(lines, "title") do
+                   Some(t) -> t
+                   None    -> default_title
+                   end
+      let lines2 = String.split(yaml_str, "\n")
+      let date   = match get_field(lines2, "date") do
+                   Some(d) -> d
+                   None    -> ""
+                   end
+      let lines3 = String.split(yaml_str, "\n")
+      let layout = match get_field(lines3, "layout") do
+                   Some(l) -> l
+                   None    -> "default"
+                   end
+      let lines4 = String.split(yaml_str, "\n")
+      let draft  = match get_field(lines4, "draft") do
+                   Some("true")  -> true
+                   Some("True")  -> true
+                   Some("yes")   -> true
+                   Some("Yes")   -> true
+                   _             -> false
+                   end
+      let lines5 = String.split(yaml_str, "\n")
+      let tags   = match get_field(lines5, "tags") do
+                   Some(v) -> parse_flow_seq(v)
+                   None    -> Nil
+                   end
+      { title  = title,
+        date   = date,
+        layout = layout,
+        tags   = tags,
+        draft  = draft }
+    end
+  end
+
+  -- Accessor for the draft field — avoids direct record field access across modules.
+  fn meta_draft(m : Meta) : Bool do
+    m.draft
+  end
+
+  -- Accessor for the title field — avoids direct record field access across modules.
+  fn meta_title(m : Meta) : String do
+    m.title
+  end
+
+  -- Parse a YAML flow sequence like "[march, ssg]" into a List(String).
+  -- Best-effort parser for simple unquoted string sequences.
+  pfn parse_flow_seq(s : String) : List(String) do
+    let trimmed = string_trim(s)
+    let len     = String.byte_size(trimmed)
+    if len >= 2 && String.starts_with(trimmed, "[") do
+      -- Strip [ and ]
+      let inner = String.slice_bytes(trimmed, 1, len - 2)
+      let parts = String.split(inner, ",")
+      List.filter_map(parts, fn p ->
+        let t = string_trim(p)
+        if t == "" do None
+        else Some(t)
+        end)
+    else
+      Nil
+    end
+  end
+
+end
