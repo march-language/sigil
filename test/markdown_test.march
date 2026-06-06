@@ -147,11 +147,11 @@ mod TestMd do
 
     test "inline code with backtick" do
       let result = MdInline.parse("before `code` after")
-      let ok = match result do
-        Cons(_, Cons(Code(c), Cons(_, Nil))) -> c == "code"
-        _ -> false
-      end
-      assert ok
+      assert (match result do
+              Cons(Inline.Text(before), Cons(Code(c), Cons(Inline.Text(after), Nil))) ->
+                before == "before " && c == "code" && after == " after"
+              _ -> false
+              end)
     end
 
     test "unclosed backtick treated as literal text" do
@@ -163,10 +163,18 @@ mod TestMd do
       assert ok
     end
 
+    test "empty code span produces Code with empty string" do
+      let result = MdInline.parse("``")
+      assert (match result do
+              Cons(Code(c), Nil) -> String.is_empty(c)
+              _ -> false
+              end)
+    end
+
     test "two code spans" do
       let result = MdInline.parse("`a` and `b`")
       let ok = match result do
-        Cons(Code(a), Cons(_, Cons(Code(b), Nil))) -> a == "a" && b == "b"
+        Cons(Code(a), Cons(Inline.Text(sep), Cons(Code(b), Nil))) -> a == "a" && sep == " and " && b == "b"
         _ -> false
       end
       assert ok
