@@ -321,6 +321,43 @@ mod TestMd do
               _ -> false
               end)
     end
+
+    test "fenced code block with language" do
+      let md = "```march\nfn f(x) do x end\n```"
+      let result = MdBlock.parse(md)
+      assert (match result do
+              Cons(CodeBlock(lang, body), Nil) ->
+                lang == "march" && String.contains(body, "fn f(x)")
+              _ -> false
+              end)
+    end
+
+    test "fenced code block no language" do
+      let md = "```\nhello\n```"
+      let result = MdBlock.parse(md)
+      assert (match result do
+              Cons(CodeBlock(lang, _), Nil) -> String.is_empty(lang)
+              _ -> false
+              end)
+    end
+
+    test "tilde fence" do
+      let md = "~~~\ncode here\n~~~"
+      let result = MdBlock.parse(md)
+      assert (match result do
+              Cons(CodeBlock(_, _), Nil) -> true
+              _ -> false
+              end)
+    end
+
+    test "code block followed by paragraph" do
+      let md = "```\ncode\n```\n\nPara"
+      let result = MdBlock.parse(md)
+      assert (match result do
+              Cons(CodeBlock(_, _), Cons(Para(_), Nil)) -> true
+              _ -> false
+              end)
+    end
   end
 
 end

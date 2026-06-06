@@ -25,7 +25,13 @@ mod MdBlock do
       flush_para(para_acc, block_acc)
     Cons(line, rest) ->
       let trimmed = String.trim(line)
-      if is_heading(trimmed) do
+      if is_fence_open(trimmed) do
+        let flushed = flush_para(para_acc, block_acc)
+        let fc   = fence_char(trimmed)
+        let lang = fence_lang(trimmed)
+        let (body, remaining) = collect_fence(rest, fc, Nil)
+        go(remaining, Nil, Cons(CodeBlock(lang, body), flushed))
+      else if is_heading(trimmed) do
         let flushed = flush_para(para_acc, block_acc)
         let h = parse_heading(trimmed)
         go(rest, Nil, Cons(h, flushed))
@@ -37,7 +43,49 @@ mod MdBlock do
         go(rest, Nil, flushed)
       else
         go(rest, Cons(line, para_acc), block_acc)
-      end end end
+      end end end end
+    end
+  end
+
+  -- A line is a fence opener if it starts with 3+ backticks or 3+ tildes.
+  pfn is_fence_open(line : String) : Bool do
+    String.starts_with(line, "```") || String.starts_with(line, "~~~")
+  end
+
+  -- Get the fence character ("`" or "~") from an opener line.
+  pfn fence_char(line : String) : String do
+    String.slice_bytes(line, 0, 1)
+  end
+
+  -- Get the language tag from a fence opener (everything after the opening ```).
+  pfn fence_lang(line : String) : String do
+    let n = String.byte_size(line)
+    String.trim(String.slice_bytes(line, 3, n - 3))
+  end
+
+  -- Collect lines until a closing fence (line of 3+ fence_char, nothing else).
+  -- Returns (body_string, remaining_lines_after_closer).
+  pfn collect_fence(lines : List(String), fc : String, body_acc : List(String)) : (String, List(String)) do
+    match lines do
+    Nil ->
+      -- Unclosed fence: everything so far is the body
+      (String.join(List.reverse(body_acc), "\n"), Nil)
+    Cons(line, rest) ->
+      let trimmed = String.trim(line)
+      let is_close = is_fence_close(trimmed, fc)
+      if is_close do
+        (String.join(List.reverse(body_acc), "\n"), rest)
+      else
+        collect_fence(rest, fc, Cons(line, body_acc))
+      end
+    end
+  end
+
+  -- A closing fence is 3+ of the same fence char and nothing else.
+  pfn is_fence_close(line : String, fc : String) : Bool do
+    let n = String.byte_size(line)
+    if n < 3 do false
+    else only_char(line, fc)
     end
   end
 
