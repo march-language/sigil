@@ -32,6 +32,8 @@ mod MdBlock do
         let (body, remaining) = collect_fence(rest, fc, Nil)
         go(remaining, Nil, Cons(CodeBlock(lang, body), flushed))
       else if is_blockquote(trimmed) do
+        -- M1 limitation: only the current (single) line is parsed as the blockquote content.
+        -- Multi-line blockquotes (consecutive "> " lines merged) are not yet supported.
         let flushed = flush_para(para_acc, block_acc)
         let stripped = strip_bq_prefix(trimmed)
         let bq_inlines = MdInline.parse(stripped)
@@ -57,13 +59,6 @@ mod MdBlock do
     end
   end
 
-  -- Parse a Markdown source string into blocks (inner version to avoid mutual recursion
-  -- between go -> collect_bullets -> parse -> go).
-  pfn parse_inner(src : String) : List(Block) do
-    let lines = String.split(src, "\n")
-    List.reverse(go(lines, Nil, Nil))
-  end
-
   pfn is_blockquote(line : String) : Bool do
     String.starts_with(line, "> ") || line == ">"
   end
@@ -79,6 +74,7 @@ mod MdBlock do
 
   -- Collect consecutive blockquote lines, stripping "> " prefix.
   -- Returns (stripped_lines, remaining_lines_after_bq).
+  -- NOTE: unused scaffolding for future multi-line blockquote support (M1 processes one line at a time).
   pfn collect_bq(lines : List(String), acc : List(String)) : (List(String), List(String)) do
     match lines do
     Nil -> (List.reverse(acc), Nil)
@@ -108,7 +104,8 @@ mod MdBlock do
 
   -- Collect consecutive bullet list items.
   -- Returns (list_of_item_block_lists, remaining_lines).
-  -- Each item is parsed as its own mini-document using parse_inner to avoid mutual recursion.
+  -- M1: each item is parsed as inline content only (no nested blocks) to avoid the
+  -- mutual-recursion cycle go -> collect_bullets -> parse_inner -> go.
   pfn collect_bullets(lines : List(String), acc : List(List(Block))) : (List(List(Block)), List(String)) do
     match lines do
     Nil -> (List.reverse(acc), Nil)
@@ -116,7 +113,8 @@ mod MdBlock do
       let t = String.trim(line)
       if is_bullet_item(t) do
         let item_src = strip_bullet_prefix(String.trim(line))
-        let item_blocks = parse_inner(item_src)
+        let inlines = MdInline.parse(item_src)
+        let item_blocks = Cons(Para(inlines), Nil)
         collect_bullets(rest, Cons(item_blocks, acc))
       else
         (List.reverse(acc), lines)
