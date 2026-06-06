@@ -16,7 +16,7 @@ mod Watcher do
   end
 
   fn write_version(output_dir : String, n : Int) : Result(Unit, String) do
-    let path = output_dir ++ "/.sigil-reload"
+    let path = version_path(output_dir)
     let data = int_to_string(n)
     match File.write(path, data) do
     Err(e) -> Err(to_string(e))
@@ -32,6 +32,8 @@ mod Watcher do
   end
 
   fn max_mtime(dir : String) : Int do
+    -- Note: scans a single directory level only (no recursion).
+    -- Content files in subdirectories are not watched. Consistent with Build.run.
     match Dir.list_full(dir) do
     Err(_)    -> 0
     Ok(paths) ->
@@ -49,15 +51,22 @@ mod Watcher do
   end
 
   pfn watch_loop(content_dir : String, output_dir : String, static_dir : String, last_mtime : Int, version : Int) : Unit do
+    -- Note: Dir.list_full and Build.run both scan flat (no subdirs).
     let _ = System.cmd("sleep", Cons("0.3", Nil))
     let current = max_mtime(content_dir)
     if current > last_mtime do
       let site = { content_dir = content_dir, output_dir = output_dir, static_dir = static_dir }
-      let _    = Build.run(site)
-      let next = version + 1
-      let _    = write_version(output_dir, next)
-      println("[sigil] rebuilt (v" ++ int_to_string(next) ++ ")")
-      watch_loop(content_dir, output_dir, static_dir, current, next)
+      match Build.run(site) do
+      Err(msg) ->
+        println("[sigil] build error: " ++ msg)
+        -- Don't advance last_mtime so we retry on next change
+        watch_loop(content_dir, output_dir, static_dir, last_mtime, version)
+      Ok(_) ->
+        let next = version + 1
+        let _ = write_version(output_dir, next)
+        println("[sigil] rebuilt (v" ++ int_to_string(next) ++ ")")
+        watch_loop(content_dir, output_dir, static_dir, current, next)
+      end
     else
       watch_loop(content_dir, output_dir, static_dir, last_mtime, version)
     end
