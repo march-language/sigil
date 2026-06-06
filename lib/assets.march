@@ -1,0 +1,49 @@
+mod Assets do
+
+  pfn fmt_err(e) : String do
+    to_string(e)
+  end
+
+  -- Copy all files from static_dir to output_dir.
+  -- Creates output_dir if needed.
+  -- Returns Ok(()) if static_dir doesn't exist (optional feature).
+  fn copy(static_dir : String, output_dir : String) : Result(Unit, String) do
+    if not(Dir.exists(static_dir)) do
+      Ok(())
+    else
+      match Dir.mkdir_p(output_dir) do
+      Err(e) -> Err("cannot create output dir: " ++ fmt_err(e))
+      Ok(_) ->
+        match Dir.list_full(static_dir) do
+        Err(e) -> Err("cannot list static dir: " ++ fmt_err(e))
+        Ok(paths) -> copy_all(static_dir, output_dir, paths)
+        end
+      end
+    end
+  end
+
+  pfn copy_all(static_dir : String, output_dir : String, paths : List(String)) : Result(Unit, String) do
+    match paths do
+    Nil -> Ok(())
+    Cons(src, rest) ->
+      match copy_file(static_dir, output_dir, src) do
+      Err(msg) -> Err(msg)
+      Ok(_)    -> copy_all(static_dir, output_dir, rest)
+      end
+    end
+  end
+
+  pfn copy_file(static_dir : String, output_dir : String, src : String) : Result(Unit, String) do
+    let name = Path.basename(src)
+    let dst  = Path.join(output_dir, name)
+    match File.read(src) do
+    Err(e) -> Err("cannot read " ++ src ++ ": " ++ fmt_err(e))
+    Ok(content) ->
+      match File.write(dst, content) do
+      Err(e) -> Err("cannot write " ++ dst ++ ": " ++ fmt_err(e))
+      Ok(_)  -> Ok(())
+      end
+    end
+  end
+
+end
