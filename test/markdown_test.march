@@ -130,4 +130,47 @@ mod TestMd do
     end
   end
 
+  describe "MdInline.parse" do
+    test "plain text becomes single Text node" do
+      let result = MdInline.parse("hello world")
+      let ok = match result do
+        Cons(Inline.Text(s), Nil) -> s == "hello world"
+        _ -> false
+      end
+      assert ok
+    end
+
+    test "empty string returns empty list" do
+      let result = MdInline.parse("")
+      assert (is_nil(result))
+    end
+
+    test "inline code with backtick" do
+      let result = MdInline.parse("before `code` after")
+      let ok = match result do
+        Cons(_, Cons(Code(c), Cons(_, Nil))) -> c == "code"
+        _ -> false
+      end
+      assert ok
+    end
+
+    test "unclosed backtick treated as literal text" do
+      let result = MdInline.parse("no `close here")
+      let ok = match result do
+        Cons(Inline.Text(s), Nil) -> s == "no `close here"
+        _ -> false
+      end
+      assert ok
+    end
+
+    test "two code spans" do
+      let result = MdInline.parse("`a` and `b`")
+      let ok = match result do
+        Cons(Code(a), Cons(_, Cons(Code(b), Nil))) -> a == "a" && b == "b"
+        _ -> false
+      end
+      assert ok
+    end
+  end
+
 end

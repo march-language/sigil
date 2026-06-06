@@ -1,0 +1,57 @@
+mod MdInline do
+
+  -- Parse a string into a list of inline nodes.
+  -- Uses byte-level scanning.
+  fn parse(s : String) : List(Inline) do
+    let n = String.byte_size(s)
+    if n == 0 do Nil
+    else List.reverse(scan(s, n, 0, 0, Nil))
+    end
+  end
+
+  -- Walk bytes of s, accumulating inline nodes in reverse order.
+  -- pos: current scan position.
+  -- text_start: start of the current plain-text run.
+  -- acc: reversed result list (call List.reverse at the end).
+  pfn scan(s : String, n : Int, pos : Int, text_start : Int, acc : List(Inline)) : List(Inline) do
+    if pos >= n do
+      let len = n - text_start
+      if len == 0 do acc
+      else Cons(Md.Inline.Text(String.slice_bytes(s, text_start, len)), acc)
+      end
+    else
+      let ch = String.slice_bytes(s, pos, 1)
+      if ch == "`" do
+        match find_byte(s, n, pos + 1, "`") do
+        None ->
+          -- No closing backtick: treat the backtick as ordinary text and continue.
+          scan(s, n, pos + 1, text_start, acc)
+        Some(close) ->
+          -- Flush any text before the backtick, then emit Code node.
+          let acc2 = flush_text(s, text_start, pos, acc)
+          let code_content = String.slice_bytes(s, pos + 1, close - pos - 1)
+          scan(s, n, close + 1, close + 1, Cons(Code(code_content), acc2))
+        end
+      else
+        scan(s, n, pos + 1, text_start, acc)
+      end
+    end
+  end
+
+  -- Emit a Text node for bytes [from, to) if non-empty.
+  pfn flush_text(s : String, from : Int, to : Int, acc : List(Inline)) : List(Inline) do
+    let len = to - from
+    if len == 0 do acc
+    else Cons(Md.Inline.Text(String.slice_bytes(s, from, len)), acc)
+    end
+  end
+
+  -- Find the first occurrence of a single-byte marker at or after `start`.
+  pfn find_byte(s : String, n : Int, start : Int, marker : String) : Option(Int) do
+    if start >= n do None
+    else if String.slice_bytes(s, start, 1) == marker do Some(start)
+    else find_byte(s, n, start + 1, marker)
+    end end
+  end
+
+end
