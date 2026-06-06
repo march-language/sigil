@@ -87,7 +87,7 @@ mod MdBlock do
 
   -- A thematic break is 3+ identical chars from {-, *, _} (spaces allowed, nothing else).
   pfn is_thematic_break(line : String) : Bool do
-    let stripped = String.replace_all(line, " ", "")
+    let stripped = String.replace_all(String.replace_all(line, " ", ""), "\t", "")
     let n = String.byte_size(stripped)
     if n < 3 do false
     else

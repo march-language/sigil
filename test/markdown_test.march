@@ -305,6 +305,22 @@ mod TestMd do
               _ -> false
               end)
     end
+
+    test "thematic break from three underscores" do
+      let result = MdBlock.parse("___")
+      assert (match result do
+              Cons(ThematicBreak, Nil) -> true
+              _ -> false
+              end)
+    end
+
+    test "paragraph followed immediately by heading (no blank line)" do
+      let result = MdBlock.parse("Some text\n# Heading")
+      assert (match result do
+              Cons(Para(_), Cons(Heading(1, _, _), Nil)) -> true
+              _ -> false
+              end)
+    end
   end
 
 end
