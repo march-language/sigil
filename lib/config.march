@@ -2,11 +2,12 @@ mod Config do
 
   type Site = {
     content_dir : String,
-    output_dir  : String
+    output_dir  : String,
+    static_dir  : String
   }
 
   fn default() : Site do
-    { content_dir = "content", output_dir = "out" }
+    { content_dir = "content", output_dir = "out", static_dir = "static" }
   end
 
 end

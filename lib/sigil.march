@@ -10,9 +10,9 @@ mod Ssg do
     let defaults = Config.default()
     match args do
     Nil ->
-      Err("usage: sigil build [--content-dir DIR] [--output-dir DIR]")
+      Err("usage: sigil build [--content-dir DIR] [--output-dir DIR] [--static-dir DIR]")
     Cons("build", flags) ->
-      parse_flags(flags, defaults.content_dir, defaults.output_dir)
+      parse_flags(flags, defaults.content_dir, defaults.output_dir, defaults.static_dir)
     Cons(cmd, _) ->
       Err("unknown subcommand: " ++ cmd)
     end
@@ -37,14 +37,16 @@ mod Ssg do
     end
   end
 
-  pfn parse_flags(args : List(String), content_dir : String, output_dir : String) : Result(Config.Site, String) do
+  pfn parse_flags(args : List(String), content_dir : String, output_dir : String, static_dir : String) : Result(Config.Site, String) do
     match args do
     Nil ->
-      Ok({ content_dir = content_dir, output_dir = output_dir })
+      Ok({ content_dir = content_dir, output_dir = output_dir, static_dir = static_dir })
     Cons("--content-dir", Cons(val, rest)) ->
-      parse_flags(rest, val, output_dir)
+      parse_flags(rest, val, output_dir, static_dir)
     Cons("--output-dir", Cons(val, rest)) ->
-      parse_flags(rest, content_dir, val)
+      parse_flags(rest, content_dir, val, static_dir)
+    Cons("--static-dir", Cons(val, rest)) ->
+      parse_flags(rest, content_dir, output_dir, val)
     Cons(flag, _) ->
       Err("unknown flag: " ++ flag)
     end

@@ -26,6 +26,7 @@ mod Build do
     -- Extract fields up front so the record isn't re-passed through recursion.
     let content_dir = site.content_dir
     let output_dir  = site.output_dir
+    let static_dir  = site.static_dir
     match Dir.mkdir_p(output_dir) do
     Err(e) -> Err("cannot create output dir: " ++ fmt_err(e))
     Ok(_) ->
@@ -33,7 +34,10 @@ mod Build do
       Err(e) -> Err("cannot list content dir: " ++ fmt_err(e))
       Ok(paths) ->
         let md_paths = List.filter(paths, fn p -> is_md(p))
-        build_all(output_dir, md_paths)
+        match build_all(output_dir, md_paths) do
+        Err(msg) -> Err(msg)
+        Ok(_)    -> Assets.copy(static_dir, output_dir)
+        end
       end
     end
   end
@@ -52,16 +56,41 @@ mod Build do
   pfn build_page(output_dir : String, src : String) : Result(Unit, String) do
     match File.read(src) do
     Err(e) -> Err("cannot read " ++ src ++ ": " ++ fmt_err(e))
-    Ok(body) ->
-      let slug      = slug_of(src)
-      let md_blocks = MdBlock.parse(body)
-      let md_html   = MdRender.render(md_blocks)
-      let html      = Html.layout(slug, IOList.empty(), md_html)
-      let out       = Path.join(output_dir, slug ++ ".html")
-      match File.write(out, IOList.to_string(html)) do
-      Err(e) -> Err("cannot write " ++ out ++ ": " ++ fmt_err(e))
-      Ok(_)  -> Ok(())
+    Ok(content) ->
+      -- Split front-matter from body (call twice to avoid tuple RC issue).
+      let meta_str = front_matter_yaml(content)
+      let body     = front_matter_body(content)
+      -- Derive draft flag and title directly as primitives.
+      let meta     = Page.decode(src, meta_str)
+      let is_draft = Page.meta_draft(meta)
+      let title    = Page.meta_title(meta)
+      match is_draft do
+      true -> Ok(())
+      false ->
+        let slug      = slug_of(src)
+        let md_blocks = MdBlock.parse(body)
+        let md_html   = MdRender.render(md_blocks)
+        let html      = Html.layout(title, IOList.empty(), md_html)
+        let out       = Path.join(output_dir, slug ++ ".html")
+        match File.write(out, IOList.to_string(html)) do
+        Err(e) -> Err("cannot write " ++ out ++ ": " ++ fmt_err(e))
+        Ok(_)  -> Ok(())
+        end
       end
+    end
+  end
+
+  -- Extract just the YAML portion from content (everything between first --- delimiters).
+  pfn front_matter_yaml(content : String) : String do
+    match FrontMatter.split(content) do
+    (yaml, _) -> yaml
+    end
+  end
+
+  -- Extract just the body portion from content (everything after the closing --- delimiter).
+  pfn front_matter_body(content : String) : String do
+    match FrontMatter.split(content) do
+    (_, body) -> body
     end
   end
 
