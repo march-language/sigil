@@ -10,7 +10,7 @@ mod Ssg do
     let defaults = Config.default()
     match args do
     Nil ->
-      Err("usage: sigil build [--content-dir DIR] [--output-dir DIR] [--static-dir DIR]")
+      Err("usage: sigil <build|serve> [--content-dir DIR] [--output-dir DIR] [--static-dir DIR]")
     Cons("build", flags) ->
       parse_flags(flags, defaults.content_dir, defaults.output_dir, defaults.static_dir)
     Cons(cmd, _) ->

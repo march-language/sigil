@@ -324,6 +324,7 @@ mod TestSigil do
       let html   = "<p>no body tag</p>"
       let result = Serve.inject_reload(html)
       assert (String.contains(result, "<p>no body tag</p>"))
+      assert (not (String.contains(result, "<script>")))
     end
   end
 
