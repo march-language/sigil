@@ -1,0 +1,69 @@
+mod Serve do
+
+  pfn reload_script() : String do
+    "<script>" ++
+    "const __ws=new WebSocket('ws://'+location.host+'/ws');" ++
+    "__ws.onmessage=function(){location.reload();};" ++
+    "</script>"
+  end
+
+  fn inject_reload(html : String) : String do
+    String.replace(html, "</body>", reload_script() ++ "</body>")
+  end
+
+  pfn serve_page(output_dir : String, slug : String, conn : HttpServer.Conn) : HttpServer.Conn do
+    let path = Path.join(output_dir, slug ++ ".html")
+    match File.read(path) do
+    Err(_)   -> HttpServer.text(conn, 404, "Not Found")
+    Ok(html) -> HttpServer.html(conn, 200, inject_reload(html))
+    end
+  end
+
+  pfn ws_handler(output_dir : String, socket : WebSocket.WsSocket) : Unit do
+    let initial_v = Watcher.read_version(output_dir)
+    ws_loop(output_dir, socket, initial_v)
+  end
+
+  pfn ws_loop(output_dir : String, socket : WebSocket.WsSocket, last_v : Int) : Unit do
+    match WebSocket.select(socket, 300) do
+    Timeout ->
+      let v = Watcher.read_version(output_dir)
+      if v != last_v do
+        let _ = WebSocket.send_frame(socket, TextFrame("reload"))
+        ws_loop(output_dir, socket, v)
+      else
+        ws_loop(output_dir, socket, last_v)
+      end
+    WsData(Close(_, _)) -> ()
+    WsData(_)  -> ws_loop(output_dir, socket, last_v)
+    ActorMsg   -> ws_loop(output_dir, socket, last_v)
+    end
+  end
+
+  pfn router(output_dir : String, conn : HttpServer.Conn) : HttpServer.Conn do
+    match (HttpServer.method(conn), HttpServer.path_info(conn)) do
+    (:get, Cons("ws", Nil)) ->
+      WebSocket.upgrade(conn, fn socket -> ws_handler(output_dir, socket))
+    (:get, Nil) ->
+      serve_page(output_dir, "index", conn)
+    (:get, Cons(slug, Nil)) ->
+      serve_page(output_dir, slug, conn)
+    _ ->
+      HttpServer.text(conn, 404, "Not Found")
+    end
+  end
+
+  fn run(site : Config.Site, port : Int) : Unit do
+    let _ = Build.run(site)
+    println("[sigil] built")
+    let output_dir = site.output_dir
+    let _ = task_spawn(fn _ -> Watcher.watch(site))
+    println("[sigil] serving http://localhost:" ++ int_to_string(port))
+    println("[sigil] press Ctrl+C to stop")
+    let router_fn = fn conn -> router(output_dir, conn)
+    HttpServer.new(port)
+    |> HttpServer.plug(router_fn)
+    |> HttpServer.listen()
+  end
+
+end

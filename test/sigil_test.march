@@ -300,4 +300,25 @@ mod TestSigil do
     end
   end
 
+  describe "Serve" do
+    test "inject_reload adds script before closing body tag" do
+      let html   = "<!DOCTYPE html><html><body><p>hi</p></body></html>"
+      let result = Serve.inject_reload(html)
+      assert (String.contains(result, "<script>"))
+      assert (String.contains(result, "WebSocket"))
+      assert (String.contains(result, "</body>"))
+      let script_pos = match String.index_of(result, "<script>") do
+                       Some(n) -> n | None -> 9999 end
+      let body_pos   = match String.index_of(result, "</body>") do
+                       Some(n) -> n | None -> 0 end
+      assert (script_pos < body_pos)
+    end
+
+    test "inject_reload is a no-op when no closing body tag" do
+      let html   = "<p>no body tag</p>"
+      let result = Serve.inject_reload(html)
+      assert (String.contains(result, "<p>no body tag</p>"))
+    end
+  end
+
 end
