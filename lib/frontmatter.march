@@ -1,0 +1,41 @@
+mod FrontMatter do
+
+  -- Split YAML front-matter from Markdown content.
+  --
+  -- If the content starts with "---\n", find the closing "---\n" and return
+  -- (yaml_between_delimiters, content_after_closing_delimiter).
+  --
+  -- If no front-matter is detected, return ("", content).
+  fn split(content : String) : (String, String) do
+    if String.starts_with(content, "---\n") do
+      -- Skip the opening delimiter (4 bytes: "---\n")
+      let rest = String.slice_bytes(content, 4, String.byte_size(content) - 4)
+      find_close(rest, "")
+    else
+      ("", content)
+    end
+  end
+
+  -- Scan `rest` character by character looking for "---\n" (the closing delimiter).
+  -- Accumulates characters into `acc` which becomes the yaml_str.
+  -- Returns ("", original_rest) on failure to find closing delimiter.
+  pfn find_close(rest : String, acc : String) : (String, String) do
+    if String.starts_with(rest, "---\n") do
+      -- Found closing delimiter; body is everything after the 4-byte "---\n"
+      let body = String.slice_bytes(rest, 4, String.byte_size(rest) - 4)
+      (acc, body)
+    else if String.byte_size(rest) == 0 do
+      -- No closing delimiter found; treat whole thing as body (no front-matter)
+      ("", acc ++ rest)
+    else
+      -- Advance one byte and keep scanning.
+      -- We need to step by UTF-8 char width, but content is ASCII front-matter
+      -- so byte-stepping is safe here.
+      let ch   = String.slice_bytes(rest, 0, 1)
+      let tail = String.slice_bytes(rest, 1, String.byte_size(rest) - 1)
+      find_close(tail, acc ++ ch)
+    end
+    end
+  end
+
+end
