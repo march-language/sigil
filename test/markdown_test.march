@@ -179,6 +179,57 @@ mod TestMd do
       end
       assert ok
     end
+
+    test "single-star emphasis" do
+      let result = MdInline.parse("*hello*")
+      assert (match result do
+              Cons(Emph(inner), Nil) ->
+                match inner do
+                Cons(Inline.Text(t), Nil) -> t == "hello"
+                _ -> false
+                end
+              _ -> false
+              end)
+    end
+
+    test "double-star strong" do
+      let result = MdInline.parse("**hello**")
+      assert (match result do
+              Cons(Strong(inner), Nil) ->
+                match inner do
+                Cons(Inline.Text(t), Nil) -> t == "hello"
+                _ -> false
+                end
+              _ -> false
+              end)
+    end
+
+    test "emphasis with surrounding text" do
+      let result = MdInline.parse("a *b* c")
+      assert (match result do
+              Cons(Inline.Text(before), Cons(Emph(inner), Cons(Inline.Text(after), Nil))) ->
+                before == "a " &&
+                (match inner do Cons(Inline.Text(t), Nil) -> t == "b" | _ -> false end) &&
+                after == " c"
+              _ -> false
+              end)
+    end
+
+    test "unclosed star treated as literal text" do
+      let result = MdInline.parse("*no close")
+      assert (match result do
+              Cons(Inline.Text(t), Nil) -> t == "*no close"
+              _ -> false
+              end)
+    end
+
+    test "double-star takes precedence over single-star" do
+      let result = MdInline.parse("**bold**")
+      assert (match result do
+              Cons(Strong(_), Nil) -> true
+              _ -> false
+              end)
+    end
   end
 
 end
