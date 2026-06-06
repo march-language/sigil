@@ -358,6 +358,39 @@ mod TestMd do
               _ -> false
               end)
     end
+
+    test "blockquote single line" do
+      let result = MdBlock.parse("> hello")
+      assert (match result do
+              Cons(Quote(_), Nil) -> true
+              _ -> false
+              end)
+    end
+
+    test "blockquote strips > prefix and parses inner content" do
+      let result = MdBlock.parse("> inner text")
+      let inner_html = match result do
+                       Cons(Quote(inner), Nil) -> IOList.to_string(MdRender.render(inner))
+                       _ -> ""
+                       end
+      assert (String.contains(inner_html, "inner text"))
+    end
+
+    test "bullet list with dash" do
+      let result = MdBlock.parse("- alpha\n- beta\n- gamma")
+      assert (match result do
+              Cons(BulletList(items), Nil) -> List.length(items) == 3
+              _ -> false
+              end)
+    end
+
+    test "bullet list with star" do
+      let result = MdBlock.parse("* one\n* two")
+      assert (match result do
+              Cons(BulletList(items), Nil) -> List.length(items) == 2
+              _ -> false
+              end)
+    end
   end
 
 end

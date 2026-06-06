@@ -31,6 +31,16 @@ mod MdBlock do
         let lang = fence_lang(trimmed)
         let (body, remaining) = collect_fence(rest, fc, Nil)
         go(remaining, Nil, Cons(CodeBlock(lang, body), flushed))
+      else if is_blockquote(trimmed) do
+        let flushed = flush_para(para_acc, block_acc)
+        let stripped = strip_bq_prefix(trimmed)
+        let bq_inlines = MdInline.parse(stripped)
+        let inner = Cons(Para(bq_inlines), Nil)
+        go(rest, Nil, Cons(Quote(inner), flushed))
+      else if is_bullet_item(trimmed) do
+        let flushed = flush_para(para_acc, block_acc)
+        let (items, remaining) = collect_bullets(Cons(line, rest), Nil)
+        go(remaining, Nil, Cons(BulletList(items), flushed))
       else if is_heading(trimmed) do
         let flushed = flush_para(para_acc, block_acc)
         let h = parse_heading(trimmed)
@@ -43,7 +53,74 @@ mod MdBlock do
         go(rest, Nil, flushed)
       else
         go(rest, Cons(line, para_acc), block_acc)
-      end end end end
+      end end end end end end
+    end
+  end
+
+  -- Parse a Markdown source string into blocks (inner version to avoid mutual recursion
+  -- between go -> collect_bullets -> parse -> go).
+  pfn parse_inner(src : String) : List(Block) do
+    let lines = String.split(src, "\n")
+    List.reverse(go(lines, Nil, Nil))
+  end
+
+  pfn is_blockquote(line : String) : Bool do
+    String.starts_with(line, "> ") || line == ">"
+  end
+
+  -- Strip the "> " prefix from a blockquote line.
+  pfn strip_bq_prefix(line : String) : String do
+    let n = String.byte_size(line)
+    if String.starts_with(line, "> ") do String.slice_bytes(line, 2, n - 2)
+    else if String.starts_with(line, ">") do String.slice_bytes(line, 1, n - 1)
+    else line
+    end end
+  end
+
+  -- Collect consecutive blockquote lines, stripping "> " prefix.
+  -- Returns (stripped_lines, remaining_lines_after_bq).
+  pfn collect_bq(lines : List(String), acc : List(String)) : (List(String), List(String)) do
+    match lines do
+    Nil -> (List.reverse(acc), Nil)
+    Cons(line, rest) ->
+      let t = String.trim(line)
+      if is_blockquote(t) do
+        collect_bq(rest, Cons(strip_bq_prefix(t), acc))
+      else
+        (List.reverse(acc), lines)
+      end
+    end
+  end
+
+  pfn is_bullet_item(line : String) : Bool do
+    String.starts_with(line, "- ") || String.starts_with(line, "* ")
+  end
+
+  -- Strip the "- " or "* " prefix from a bullet item line.
+  pfn strip_bullet_prefix(line : String) : String do
+    let n = String.byte_size(line)
+    if String.starts_with(line, "- ") || String.starts_with(line, "* ") do
+      String.slice_bytes(line, 2, n - 2)
+    else
+      line
+    end
+  end
+
+  -- Collect consecutive bullet list items.
+  -- Returns (list_of_item_block_lists, remaining_lines).
+  -- Each item is parsed as its own mini-document using parse_inner to avoid mutual recursion.
+  pfn collect_bullets(lines : List(String), acc : List(List(Block))) : (List(List(Block)), List(String)) do
+    match lines do
+    Nil -> (List.reverse(acc), Nil)
+    Cons(line, rest) ->
+      let t = String.trim(line)
+      if is_bullet_item(t) do
+        let item_src = strip_bullet_prefix(String.trim(line))
+        let item_blocks = parse_inner(item_src)
+        collect_bullets(rest, Cons(item_blocks, acc))
+      else
+        (List.reverse(acc), lines)
+      end
     end
   end
 
