@@ -71,7 +71,7 @@ mod MdInline do
           end
         if next_star do
           match find_seq(s, n, pos + 2, "**", 2) do
-          None    -> scan_run(s, n, pos + 1, pos, acc)
+          None    -> scan_run(s, n, pos + 1, text_start, acc)
           Some(st_close) ->
             let st_acc = flush_text(s, text_start, pos, acc)
             let st_body = String.slice_bytes(s, pos + 2, st_close - pos - 2)

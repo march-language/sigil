@@ -230,6 +230,14 @@ mod TestMd do
               _ -> false
               end)
     end
+
+    test "unclosed double-star with preceding text preserved" do
+      let result = MdInline.parse("hello **no close")
+      assert (match result do
+              Cons(Inline.Text(t), Nil) -> t == "hello **no close"
+              _ -> false
+              end)
+    end
   end
 
 end
