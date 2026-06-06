@@ -117,6 +117,12 @@ mod TestSigil do
       assert (match result do Ok(_) -> false | Err(_) -> true end)
     end
 
+    test "serve subcommand returns Err from parse_args (routed separately in main)" do
+      let argv = Cons("sigil", Cons("serve", Nil))
+      let result = Ssg.parse_args(argv)
+      assert (match result do Ok(_) -> false | Err(_) -> true end)
+    end
+
     test "unknown flag returns Err" do
       let argv = Cons("sigil",
                    Cons("build", Cons("--foo", Cons("bar", Nil))))

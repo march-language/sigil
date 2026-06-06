@@ -53,15 +53,29 @@ mod Ssg do
   end
 
   fn main() do
-    match parse_args(System.argv()) do
-    Err(msg) ->
-      println(msg)
-    Ok(site) ->
-      match Build.run(site) do
+    -- Route on the first non-path argument.
+    -- System.argv() called in each branch separately to avoid RC issues.
+    let args = drop_paths(System.argv())
+    match args do
+    Cons("serve", flags) ->
+      let d = Config.default()
+      match parse_flags(flags, d.content_dir, d.output_dir, d.static_dir) do
       Err(msg) ->
-        println("error: " ++ msg)
-      Ok(_) ->
-        println("done.")
+        println(msg)
+      Ok(site) ->
+        Serve.run(site, 4000)
+      end
+    _ ->
+      match parse_args(System.argv()) do
+      Err(msg) ->
+        println(msg)
+      Ok(site) ->
+        match Build.run(site) do
+        Err(msg) ->
+          println("error: " ++ msg)
+        Ok(_) ->
+          println("done.")
+        end
       end
     end
   end

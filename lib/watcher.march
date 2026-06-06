@@ -1,5 +1,17 @@
 mod Watcher do
 
+  -- Read the output directory from the process environment.
+  -- The Serve module sets SIGIL_OUTPUT_DIR before starting the watcher.
+  -- Using System.env() on each call gives a fresh String with its own RC,
+  -- avoiding Perceus RC underflow issues in TCO loops that would occur if
+  -- output_dir were passed as a loop parameter and used multiple times per iteration.
+  pfn get_output_dir() : String do
+    match System.env("SIGIL_OUTPUT_DIR") do
+    Some(d) -> d
+    None    -> "out"
+    end
+  end
+
   fn version_path(output_dir : String) : String do
     Path.join(output_dir, ".sigil-reload")
   end
@@ -42,33 +54,37 @@ mod Watcher do
     end
   end
 
-  fn watch(site : Config.Site) : Unit do
-    let content_dir = site.content_dir
-    let output_dir  = site.output_dir
-    let static_dir  = site.static_dir
-    let initial     = max_mtime(content_dir)
-    watch_loop(content_dir, output_dir, static_dir, initial, 0)
+  -- Watch for changes in content_dir. output_dir and static_dir are read from
+  -- the process environment (SIGIL_OUTPUT_DIR, SIGIL_STATIC_DIR) on each poll
+  -- iteration to avoid Perceus RC underflow: the Perceus pass does not correctly
+  -- insert incrc for function-parameter strings used in both a function call
+  -- (write_version) and a TCO back-edge in the same branch.
+  fn watch(content_dir : String) : Unit do
+    watch_loop(content_dir, 0, 0)
   end
 
-  pfn watch_loop(content_dir : String, output_dir : String, static_dir : String, last_mtime : Int, version : Int) : Unit do
+  pfn watch_loop(content_dir : String, last_mtime : Int, version : Int) : Unit do
     -- Note: Dir.list_full and Build.run both scan flat (no subdirs).
     let _ = System.cmd("sleep", Cons("0.3", Nil))
     let current = max_mtime(content_dir)
     if current > last_mtime do
+      let output_dir = get_output_dir()
+      let static_dir = match System.env("SIGIL_STATIC_DIR") do Some(d) -> d | None -> "static" end
       let site = { content_dir = content_dir, output_dir = output_dir, static_dir = static_dir }
       match Build.run(site) do
       Err(msg) ->
         println("[sigil] build error: " ++ msg)
         -- Don't advance last_mtime so we retry on next change
-        watch_loop(content_dir, output_dir, static_dir, last_mtime, version)
+        watch_loop(content_dir, last_mtime, version)
       Ok(_) ->
         let next = version + 1
-        let _ = write_version(output_dir, next)
+        let od2 = get_output_dir()
+        let _ = write_version(od2, next)
         println("[sigil] rebuilt (v" ++ int_to_string(next) ++ ")")
-        watch_loop(content_dir, output_dir, static_dir, current, next)
+        watch_loop(content_dir, current, next)
       end
     else
-      watch_loop(content_dir, output_dir, static_dir, last_mtime, version)
+      watch_loop(content_dir, last_mtime, version)
     end
   end
 
