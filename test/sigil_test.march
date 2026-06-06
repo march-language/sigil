@@ -27,12 +27,12 @@ mod TestSigil do
       let content_dir = Path.join(tmp, "content")
       let output_dir  = Path.join(tmp, "out")
       let _ = Dir.mkdir_p(content_dir)
-      let _ = File.write(Path.join(content_dir, "hello.md"), "<p>Hello</p>")
+      let _ = File.write(Path.join(content_dir, "hello.md"), "Hello")
       let site = { content_dir = content_dir, output_dir = output_dir }
       let _ = Build.run(site)
       let html = match File.read(Path.join(output_dir, "hello.html")) do
                  Ok(s) -> s | Err(_) -> "" end
-      assert (String.contains(html, "<p>Hello</p>"))
+      assert (String.contains(html, "Hello"))
       let _ = Dir.rm_rf(tmp)
     end
 
@@ -69,6 +69,23 @@ mod TestSigil do
       let site = { content_dir = "/tmp/sigil_no_such_dir_xyz", output_dir = "/tmp/sigil_out_xyz" }
       let result = Build.run(site)
       assert (match result do Ok(_) -> false | Err(_) -> true end)
+    end
+
+    test "markdown heading renders as h1 in output" do
+      let tmp = "/tmp/sigil_md_" ++ to_string(System.monotonic_time())
+      let content_dir = Path.join(tmp, "content")
+      let output_dir  = Path.join(tmp, "out")
+      let _ = Dir.mkdir_p(content_dir)
+      let _ = File.write(Path.join(content_dir, "post.md"), "# Hello\n\nParagraph text.")
+      let site = { content_dir = content_dir, output_dir = output_dir }
+      let _ = Build.run(site)
+      let html = match File.read(Path.join(output_dir, "post.html")) do
+                 Ok(s) -> s | Err(_) -> "" end
+      assert (String.contains(html, "<h1"))
+      assert (String.contains(html, "Hello"))
+      assert (String.contains(html, "<p>"))
+      assert (String.contains(html, "Paragraph text."))
+      let _ = Dir.rm_rf(tmp)
     end
   end
 

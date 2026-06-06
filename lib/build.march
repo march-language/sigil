@@ -53,9 +53,11 @@ mod Build do
     match File.read(src) do
     Err(e) -> Err("cannot read " ++ src ++ ": " ++ fmt_err(e))
     Ok(body) ->
-      let slug = slug_of(src)
-      let html = Html.layout(slug, IOList.empty(), IOList.from_string(body))
-      let out  = Path.join(output_dir, slug ++ ".html")
+      let slug      = slug_of(src)
+      let md_blocks = MdBlock.parse(body)
+      let md_html   = MdRender.render(md_blocks)
+      let html      = Html.layout(slug, IOList.empty(), md_html)
+      let out       = Path.join(output_dir, slug ++ ".html")
       match File.write(out, IOList.to_string(html)) do
       Err(e) -> Err("cannot write " ++ out ++ ": " ++ fmt_err(e))
       Ok(_)  -> Ok(())
