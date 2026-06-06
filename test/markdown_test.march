@@ -240,4 +240,71 @@ mod TestMd do
     end
   end
 
+  describe "MdBlock.parse" do
+    test "empty string returns empty list" do
+      assert (MdBlock.parse("") == Nil)
+    end
+
+    test "single paragraph" do
+      let result = MdBlock.parse("Hello world")
+      assert (match result do
+              Cons(Para(_), Nil) -> true
+              _ -> false
+              end)
+    end
+
+    test "h1 heading" do
+      let result = MdBlock.parse("# Hello")
+      assert (match result do
+              Cons(Heading(1, _, _), Nil) -> true
+              _ -> false
+              end)
+    end
+
+    test "h2 heading" do
+      let result = MdBlock.parse("## Section")
+      assert (match result do
+              Cons(Heading(2, _, _), Nil) -> true
+              _ -> false
+              end)
+    end
+
+    test "heading anchor is lowercased and hyphenated" do
+      let result = MdBlock.parse("# Hello World")
+      assert (match result do
+              Cons(Heading(_, id, _), Nil) -> id == "hello-world"
+              _ -> false
+              end)
+    end
+
+    test "thematic break from three dashes" do
+      let result = MdBlock.parse("---")
+      assert (match result do
+              Cons(ThematicBreak, Nil) -> true
+              _ -> false
+              end)
+    end
+
+    test "thematic break from three stars" do
+      let result = MdBlock.parse("***")
+      assert (match result do
+              Cons(ThematicBreak, Nil) -> true
+              _ -> false
+              end)
+    end
+
+    test "two paragraphs separated by blank line" do
+      let result = MdBlock.parse("First\n\nSecond")
+      assert (List.length(result) == 2)
+    end
+
+    test "heading followed by paragraph" do
+      let result = MdBlock.parse("# Title\n\nBody text")
+      assert (match result do
+              Cons(Heading(1, _, _), Cons(Para(_), Nil)) -> true
+              _ -> false
+              end)
+    end
+  end
+
 end

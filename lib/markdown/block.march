@@ -1,0 +1,179 @@
+mod MdBlock do
+
+  -- Parse a full Markdown document into a list of Block nodes.
+  -- Note: signatures use unqualified `Block` / `Inline` rather than `Md.Block` / `Md.Inline`.
+  -- Using qualified names in signatures causes the March type-checker to treat them as distinct
+  -- from the constructor types in match arms, producing type errors.
+  fn parse(src : String) : List(Block) do
+    if String.is_empty(src) do Nil
+    else
+      let lines = String.split(src, "\n")
+      List.reverse(go(lines, Nil, Nil))
+    end
+  end
+
+  -- go: process lines into blocks.
+  -- lines     : remaining lines
+  -- para_acc  : accumulated paragraph lines (reversed)
+  -- block_acc : completed blocks (reversed)
+  --
+  -- RC note: all three args are List(String) or List(Block) — no records.
+  -- Each list is used at most once per branch before being passed to recursion.
+  pfn go(lines : List(String), para_acc : List(String), block_acc : List(Block)) : List(Block) do
+    match lines do
+    Nil ->
+      flush_para(para_acc, block_acc)
+    Cons(line, rest) ->
+      let trimmed = String.trim(line)
+      if is_heading(trimmed) do
+        let flushed = flush_para(para_acc, block_acc)
+        let h = parse_heading(trimmed)
+        go(rest, Nil, Cons(h, flushed))
+      else if is_thematic_break(trimmed) do
+        let flushed = flush_para(para_acc, block_acc)
+        go(rest, Nil, Cons(ThematicBreak, flushed))
+      else if String.is_empty(trimmed) do
+        let flushed = flush_para(para_acc, block_acc)
+        go(rest, Nil, flushed)
+      else
+        go(rest, Cons(line, para_acc), block_acc)
+      end end end
+    end
+  end
+
+  -- Emit a Para block from accumulated lines if non-empty.
+  pfn flush_para(para_acc : List(String), block_acc : List(Block)) : List(Block) do
+    match para_acc do
+    Nil -> block_acc
+    _   ->
+      let content = String.join(List.reverse(para_acc), "\n")
+      let inlines = MdInline.parse(content)
+      Cons(Para(inlines), block_acc)
+    end
+  end
+
+  -- A line is an ATX heading if it starts with 1-6 `#` followed by space or end of line.
+  pfn is_heading(line : String) : Bool do
+    String.starts_with(line, "# ")  ||
+    String.starts_with(line, "## ") ||
+    String.starts_with(line, "### ") ||
+    String.starts_with(line, "#### ") ||
+    String.starts_with(line, "##### ") ||
+    String.starts_with(line, "###### ") ||
+    line == "#" || line == "##" || line == "###" ||
+    line == "####" || line == "#####" || line == "######"
+  end
+
+  -- Parse an ATX heading line into a Heading block.
+  pfn parse_heading(line : String) : Block do
+    let level = count_hashes(line, 0)
+    let clamped = if level < 1 do 1 else if level > 6 do 6 else level end end
+    -- Drop the hash prefix; trim leading/trailing space from the content
+    let n = String.byte_size(line)
+    let raw = String.trim(String.slice_bytes(line, clamped, n - clamped))
+    let anchor = make_anchor(raw)
+    let inlines = MdInline.parse(raw)
+    Heading(clamped, anchor, inlines)
+  end
+
+  -- Count leading '#' characters (tail-recursive).
+  pfn count_hashes(s : String, n : Int) : Int do
+    if String.byte_size(s) > n && String.slice_bytes(s, n, 1) == "#" do
+      count_hashes(s, n + 1)
+    else
+      n
+    end
+  end
+
+  -- A thematic break is 3+ identical chars from {-, *, _} (spaces allowed, nothing else).
+  pfn is_thematic_break(line : String) : Bool do
+    let stripped = String.replace_all(line, " ", "")
+    let n = String.byte_size(stripped)
+    if n < 3 do false
+    else
+      let first = String.slice_bytes(stripped, 0, 1)
+      (first == "-" || first == "*" || first == "_") && only_char(stripped, first)
+    end
+  end
+
+  -- True if every byte of s equals ch.
+  pfn only_char(s : String, ch : String) : Bool do
+    only_char_from(s, ch, 0, String.byte_size(s))
+  end
+
+  pfn only_char_from(s : String, ch : String, i : Int, n : Int) : Bool do
+    if i >= n do true
+    else if String.slice_bytes(s, i, 1) == ch do only_char_from(s, ch, i + 1, n)
+    else false
+    end end
+  end
+
+  -- Convert a heading text to an anchor slug: lowercase, spaces->hyphens, keep [a-z0-9-].
+  -- Uses byte-level scanning since String.chars is not available.
+  pfn make_anchor(text : String) : String do
+    let lower = String.to_lowercase(text)
+    let hyphenated = String.replace_all(lower, " ", "-")
+    let n = String.byte_size(hyphenated)
+    anchor_loop(hyphenated, n, 0, "")
+  end
+
+  pfn anchor_loop(s : String, n : Int, i : Int, acc : String) : String do
+    if i >= n do acc
+    else
+      let byte = String.slice_bytes(s, i, 1)
+      let code = byte_to_code(byte)
+      let keep =
+        (code >= 97 && code <= 122) ||
+        (code >= 48 && code <= 57)  ||
+        code == 45
+      if keep do anchor_loop(s, n, i + 1, acc ++ byte)
+      else anchor_loop(s, n, i + 1, acc)
+      end
+    end
+  end
+
+  -- Map a single-byte string to its ASCII code point.
+  pfn byte_to_code(b : String) : Int do
+    if b == "a" do 97
+    else if b == "b" do 98
+    else if b == "c" do 99
+    else if b == "d" do 100
+    else if b == "e" do 101
+    else if b == "f" do 102
+    else if b == "g" do 103
+    else if b == "h" do 104
+    else if b == "i" do 105
+    else if b == "j" do 106
+    else if b == "k" do 107
+    else if b == "l" do 108
+    else if b == "m" do 109
+    else if b == "n" do 110
+    else if b == "o" do 111
+    else if b == "p" do 112
+    else if b == "q" do 113
+    else if b == "r" do 114
+    else if b == "s" do 115
+    else if b == "t" do 116
+    else if b == "u" do 117
+    else if b == "v" do 118
+    else if b == "w" do 119
+    else if b == "x" do 120
+    else if b == "y" do 121
+    else if b == "z" do 122
+    else if b == "0" do 48
+    else if b == "1" do 49
+    else if b == "2" do 50
+    else if b == "3" do 51
+    else if b == "4" do 52
+    else if b == "5" do 53
+    else if b == "6" do 54
+    else if b == "7" do 55
+    else if b == "8" do 56
+    else if b == "9" do 57
+    else if b == "-" do 45
+    else 0
+    end end end end end end end end end end end end end end end end end end end
+    end end end end end end end end end end end end end end end end end end
+  end
+
+end
