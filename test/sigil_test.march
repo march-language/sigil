@@ -328,4 +328,20 @@ mod TestSigil do
     end
   end
 
+  describe "Site" do
+    test "default returns expected values" do
+      let s = Site.default()
+      assert (s.title == "My Site")
+      assert (s.base_url == "")
+      assert (s.author == "")
+      assert (s.description == "")
+    end
+
+    test "Info record holds custom values" do
+      let s = { title = "My Blog", base_url = "https://example.com", author = "Ada", description = "A blog." }
+      assert (s.title == "My Blog")
+      assert (s.author == "Ada")
+    end
+  end
+
 end
