@@ -400,6 +400,28 @@ mod TestSigil do
       assert (String.contains(html, "<!DOCTYPE html>"))
       let _ = Dir.rm_rf(tmp)
     end
+
+    test "H1 heading text becomes page.title when no front-matter title set" do
+      let tmp = "/tmp/sigil_m3_h1_" ++ to_string(System.monotonic_time())
+      let content_dir = Path.join(tmp, "content")
+      let output_dir  = Path.join(tmp, "out")
+      let _ = Dir.mkdir_p(content_dir)
+      -- No front-matter title: only a heading in the body
+      let _ = File.write(Path.join(content_dir, "article.md"), "# My Great Article\n\nSome content.")
+      let build_cfg = { content_dir = content_dir, output_dir = output_dir, static_dir = "/tmp/no_static" }
+      let site_info = Site.default()
+      -- Capture the page.title as seen by the layout
+      let lf = Build.LayoutFn(fn site -> fn page -> fn content ->
+        IOList.from_string("<title>" ++ page.title ++ "</title>")
+      )
+      let _ = Build.run_with_layout(build_cfg, site_info, lf)
+      let html = match File.read(Path.join(output_dir, "article.html")) do
+                 Ok(s) -> s | Err(_) -> "" end
+      -- Should be H1 text, not the slug "article"
+      assert (String.contains(html, "<title>My Great Article</title>"))
+      assert (not (String.contains(html, "<title>article</title>")))
+      let _ = Dir.rm_rf(tmp)
+    end
   end
 
 end

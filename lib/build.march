@@ -92,13 +92,13 @@ mod Build do
         -- If no front-matter title was set, try to derive title from first heading.
         let raw_title = Page.meta_title(meta)
         let page_title =
-          if raw_title == slug do
+          if Page.has_title(meta) do
+            raw_title
+          else
             match first_heading_text(md_blocks) do
             None    -> raw_title
             Some(t) -> t
             end
-          else
-            raw_title
           end
         let final_meta = Page.with_title(meta, page_title)
         let html      = apply_layout(lf, site, final_meta, md_html)

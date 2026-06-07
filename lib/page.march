@@ -1,11 +1,12 @@
 mod Page do
 
   type Meta = {
-    title  : String,
-    date   : String,
-    layout : String,
-    tags   : List(String),
-    draft  : Bool
+    title     : String,
+    raw_title : Option(String),
+    date      : String,
+    layout    : String,
+    tags      : List(String),
+    draft     : Bool
   }
 
   -- Derive the slug (filename without extension) from a source path.
@@ -55,18 +56,23 @@ mod Page do
   fn decode(src_path : String, yaml_str : String) : Meta do
     let default_title = slug_of(src_path)
     if yaml_str == "" do
-      { title  = default_title,
-        date   = "",
-        layout = "default",
-        tags   = Nil,
-        draft  = false }
+      { title     = default_title,
+        raw_title = None,
+        date      = "",
+        layout    = "default",
+        tags      = Nil,
+        draft     = false }
     else
-      let lines  = String.split(yaml_str, "\n")
+      let lines     = String.split(yaml_str, "\n")
       -- Extract each field independently to avoid RC underflow from tuple lists.
-      let title  = match get_field(lines, "title") do
-                   Some(t) -> t
-                   None    -> default_title
-                   end
+      let raw_title_opt = match get_field(lines, "title") do
+                          Some(t) -> Some(t)
+                          None    -> None
+                          end
+      let title     = match raw_title_opt do
+                      Some(t) -> t
+                      None    -> default_title
+                      end
       let lines2 = String.split(yaml_str, "\n")
       let date   = match get_field(lines2, "date") do
                    Some(d) -> d
@@ -90,11 +96,12 @@ mod Page do
                    Some(v) -> parse_flow_seq(v)
                    None    -> Nil
                    end
-      { title  = title,
-        date   = date,
-        layout = layout,
-        tags   = tags,
-        draft  = draft }
+      { title     = title,
+        raw_title = raw_title_opt,
+        date      = date,
+        layout    = layout,
+        tags      = tags,
+        draft     = draft }
     end
   end
 
@@ -110,11 +117,26 @@ mod Page do
 
   -- Return a new Meta with the title field replaced.
   fn with_title(m : Meta, t : String) : Meta do
-    { title  = t,
-      date   = m.date,
-      layout = m.layout,
-      tags   = m.tags,
-      draft  = m.draft }
+    { title     = t,
+      raw_title = m.raw_title,
+      date      = m.date,
+      layout    = m.layout,
+      tags      = m.tags,
+      draft     = m.draft }
+  end
+
+  -- Return the raw front-matter title if one was explicitly set, or None.
+  -- None means no "title:" key was present in the YAML.
+  fn raw_title(m : Meta) : Option(String) do
+    m.raw_title
+  end
+
+  -- Return true if the page had an explicit "title:" key in its front-matter.
+  fn has_title(m : Meta) : Bool do
+    match m.raw_title do
+    Some(_) -> true
+    None    -> false
+    end
   end
 
   -- Parse a YAML flow sequence like "[march, ssg]" into a List(String).
