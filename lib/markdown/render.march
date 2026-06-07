@@ -48,6 +48,34 @@ mod MdRender do
       IOList.from_string("<hr>")
     RawHtml(html) ->
       IOList.from_string(html)
+    Table(headers, rows) ->
+      let th_cells = Html.list(headers, fn cell ->
+        IOList.from_string("<th>")
+        |> IOList.append(render_inlines(cell))
+        |> IOList.append(IOList.from_string("</th>"))
+      )
+      let thead =
+        IOList.from_string("<thead><tr>")
+        |> IOList.append(th_cells)
+        |> IOList.append(IOList.from_string("</tr></thead>"))
+      let tbody_rows = Html.list(rows, fn row ->
+        let td_cells = Html.list(row, fn cell ->
+          IOList.from_string("<td>")
+          |> IOList.append(render_inlines(cell))
+          |> IOList.append(IOList.from_string("</td>"))
+        )
+        IOList.from_string("<tr>")
+        |> IOList.append(td_cells)
+        |> IOList.append(IOList.from_string("</tr>"))
+      )
+      let tbody =
+        IOList.from_string("<tbody>")
+        |> IOList.append(tbody_rows)
+        |> IOList.append(IOList.from_string("</tbody>"))
+      IOList.from_string("<table>")
+      |> IOList.append(thead)
+      |> IOList.append(tbody)
+      |> IOList.append(IOList.from_string("</table>"))
     end
   end
 

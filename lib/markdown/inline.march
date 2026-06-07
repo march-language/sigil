@@ -64,6 +64,49 @@ mod MdInline do
           let bt_code = String.slice_bytes(s, pos + 1, btick_close - pos - 1)
           scan_run(s, n, btick_close + 1, btick_close + 1, Cons(Code(bt_code), bt_acc))
         end
+      else if ch == "!" && pos + 1 < n && String.slice_bytes(s, pos + 1, 1) == "[" do
+        -- Possible image: ![alt](url) or ![alt](url "title")
+        match find_byte(s, n, pos + 2, "]") do
+        None -> scan_run(s, n, pos + 1, text_start, acc)
+        Some(img_close) ->
+          if img_close + 1 < n && String.slice_bytes(s, img_close + 1, 1) == "(" do
+            match find_byte(s, n, img_close + 2, ")") do
+            None -> scan_run(s, n, pos + 1, text_start, acc)
+            Some(img_paren_close) ->
+              let img_alt = String.slice_bytes(s, pos + 2, img_close - pos - 2)
+              let img_dest_raw = String.slice_bytes(s, img_close + 2, img_paren_close - img_close - 2)
+              -- Single-use tuple destructure avoids double-ownership of the pair.
+              let (img_url, img_title) = parse_link_dest(img_dest_raw)
+              let img_acc = flush_text(s, text_start, pos, acc)
+              scan_run(s, n, img_paren_close + 1, img_paren_close + 1,
+                Cons(Image(img_url, img_alt, img_title), img_acc))
+            end
+          else
+            scan_run(s, n, pos + 1, text_start, acc)
+          end
+        end
+      else if ch == "[" do
+        -- Possible link: [text](url) or [text](url "title")
+        match find_byte(s, n, pos + 1, "]") do
+        None -> scan_run(s, n, pos + 1, text_start, acc)
+        Some(link_close) ->
+          if link_close + 1 < n && String.slice_bytes(s, link_close + 1, 1) == "(" do
+            match find_byte(s, n, link_close + 2, ")") do
+            None -> scan_run(s, n, pos + 1, text_start, acc)
+            Some(link_paren_close) ->
+              let link_text = String.slice_bytes(s, pos + 1, link_close - pos - 1)
+              let link_dest_raw = String.slice_bytes(s, link_close + 2, link_paren_close - link_close - 2)
+              -- Single-use tuple destructure avoids double-ownership of the pair.
+              let (link_url, link_title) = parse_link_dest(link_dest_raw)
+              let link_kids = parse_span(link_text)
+              let link_acc = flush_text(s, text_start, pos, acc)
+              scan_run(s, n, link_paren_close + 1, link_paren_close + 1,
+                Cons(Link(link_url, link_title, link_kids), link_acc))
+            end
+          else
+            scan_run(s, n, pos + 1, text_start, acc)
+          end
+        end
       else if ch == "*" do
         let next_star =
           if pos + 1 < n do String.slice_bytes(s, pos + 1, 1) == "*"
@@ -88,9 +131,34 @@ mod MdInline do
             scan_run(s, n, em_close + 1, em_close + 1, Cons(Emph(em_kids), em_acc))
           end
         end
+      else if ch == "_" do
+        -- __strong__ or _emph_ (underscore variants)
+        let next_under =
+          if pos + 1 < n do String.slice_bytes(s, pos + 1, 1) == "_"
+          else false
+          end
+        if next_under do
+          match find_seq(s, n, pos + 2, "__", 2) do
+          None    -> scan_run(s, n, pos + 1, text_start, acc)
+          Some(us_close) ->
+            let us_acc = flush_text(s, text_start, pos, acc)
+            let us_body = String.slice_bytes(s, pos + 2, us_close - pos - 2)
+            let us_kids = parse_span(us_body)
+            scan_run(s, n, us_close + 2, us_close + 2, Cons(Strong(us_kids), us_acc))
+          end
+        else
+          match find_byte(s, n, pos + 1, "_") do
+          None    -> scan_run(s, n, pos + 1, text_start, acc)
+          Some(ue_close) ->
+            let ue_acc = flush_text(s, text_start, pos, acc)
+            let ue_body = String.slice_bytes(s, pos + 1, ue_close - pos - 1)
+            let ue_kids = parse_span(ue_body)
+            scan_run(s, n, ue_close + 1, ue_close + 1, Cons(Emph(ue_kids), ue_acc))
+          end
+        end
       else
         scan_run(s, n, pos + 1, text_start, acc)
-      end end
+      end end end end end
     end
   end
 
@@ -108,6 +176,51 @@ mod MdInline do
     else if String.slice_bytes(s, start, 1) == marker do Some(start)
     else find_byte(s, n, start + 1, marker)
     end end
+  end
+
+  -- Parse a link destination string: "url" or "url \"title\"" or "url 'title'".
+  -- Returns a (url, title) tuple — destructure with `let (url, title) = ...` to
+  -- avoid double-ownership of the value (using it twice triggers Perceus RC underflow).
+  pfn parse_link_dest(raw : String) : (String, String) do
+    let r = String.trim(raw)
+    let rn = String.byte_size(r)
+    match find_title_start(r, rn) do
+    None    -> (r, "")
+    Some(i) ->
+      let url   = String.trim(String.slice_bytes(r, 0, i))
+      let title = extract_title(r, i, rn)
+      (url, title)
+    end
+  end
+
+  -- Find the byte index of the title-quote opener (a space followed by " or ').
+  -- Returns Some(index_of_space) if found, None otherwise.
+  pfn find_title_start(s : String, n : Int) : Option(Int) do
+    find_title_start_from(s, n, 0)
+  end
+
+  pfn find_title_start_from(s : String, n : Int, i : Int) : Option(Int) do
+    if i >= n do None
+    else
+      let c = String.slice_bytes(s, i, 1)
+      if c == " " && i + 1 < n do
+        let nxt = String.slice_bytes(s, i + 1, 1)
+        if nxt == "\"" || nxt == "'" do Some(i)
+        else find_title_start_from(s, n, i + 1)
+        end
+      else find_title_start_from(s, n, i + 1)
+      end
+    end
+  end
+
+  -- Extract the title content from inside its quotes, given the space position.
+  pfn extract_title(s : String, space_i : Int, n : Int) : String do
+    let q = String.slice_bytes(s, space_i + 1, 1)
+    let inner_start = space_i + 2
+    let inner_len   = n - inner_start - 1  -- chop the closing quote
+    if inner_len <= 0 do ""
+    else String.slice_bytes(s, inner_start, inner_len)
+    end
   end
 
   -- Find the first occurrence of a multi-byte marker at or after `pos`.

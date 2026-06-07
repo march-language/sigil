@@ -19,5 +19,6 @@ mod Md do
     | Quote(List(Block))
     | ThematicBreak
     | RawHtml(String)
+    | Table(List(List(Inline)), List(List(List(Inline))))
 
 end

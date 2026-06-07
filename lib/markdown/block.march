@@ -39,10 +39,31 @@ mod MdBlock do
         let bq_inlines = MdInline.parse(stripped)
         let inner = Cons(Para(bq_inlines), Nil)
         go(rest, Nil, Cons(Quote(inner), flushed))
+      else if is_ordered_item(trimmed) do
+        let flushed = flush_para(para_acc, block_acc)
+        let start_num = ordered_item_number(trimmed)
+        let (items, remaining) = collect_ordered(Cons(line, rest), Nil)
+        go(remaining, Nil, Cons(OrdList(start_num, items), flushed))
       else if is_bullet_item(trimmed) do
         let flushed = flush_para(para_acc, block_acc)
         let (items, remaining) = collect_bullets(Cons(line, rest), Nil)
         go(remaining, Nil, Cons(BulletList(items), flushed))
+      else if is_table_row(trimmed) do
+        -- Lookahead: only treat as table if the very next line is a separator row.
+        match rest do
+        Cons(sep_line, data_lines) ->
+          let sep_trimmed = String.trim(sep_line)
+          if is_table_separator(sep_trimmed) do
+            let flushed = flush_para(para_acc, block_acc)
+            let headers = map_parse_cells(split_table_row(trimmed))
+            let (data_rows, remaining) = collect_table_rows(data_lines, Nil)
+            go(remaining, Nil, Cons(Table(headers, data_rows), flushed))
+          else
+            go(rest, Cons(line, para_acc), block_acc)
+          end
+        _ ->
+          go(rest, Cons(line, para_acc), block_acc)
+        end
       else if is_heading(trimmed) do
         let flushed = flush_para(para_acc, block_acc)
         let h = parse_heading(trimmed)
@@ -55,7 +76,7 @@ mod MdBlock do
         go(rest, Nil, flushed)
       else
         go(rest, Cons(line, para_acc), block_acc)
-      end end end end end end
+      end end end end end end end end
     end
   end
 
@@ -116,6 +137,165 @@ mod MdBlock do
         let inlines = MdInline.parse(item_src)
         let item_blocks = Cons(Para(inlines), Nil)
         collect_bullets(rest, Cons(item_blocks, acc))
+      else
+        (List.reverse(acc), lines)
+      end
+    end
+  end
+
+  -- True if a line looks like an ordered list item: one or more digits followed by ". ".
+  pfn is_ordered_item(line : String) : Bool do
+    let n = String.byte_size(line)
+    if n < 3 do false
+    else is_ordered_item_from(line, n, 0)
+    end
+  end
+
+  pfn is_ordered_item_from(line : String, n : Int, i : Int) : Bool do
+    if i >= n do false
+    else
+      let c = String.slice_bytes(line, i, 1)
+      let code = byte_to_code(c)
+      if code >= 48 && code <= 57 do
+        -- digit: keep scanning
+        is_ordered_item_from(line, n, i + 1)
+      else if c == "." && i > 0 && i + 1 < n && String.slice_bytes(line, i + 1, 1) == " " do
+        true
+      else
+        false
+      end end
+    end
+  end
+
+  -- Extract the number from an ordered list item like "3. text" → 3.
+  pfn ordered_item_number(line : String) : Int do
+    ordered_digits(line, String.byte_size(line), 0, 0)
+  end
+
+  pfn ordered_digits(line : String, n : Int, i : Int, acc : Int) : Int do
+    if i >= n do acc
+    else
+      let c = String.slice_bytes(line, i, 1)
+      let code = byte_to_code(c)
+      if code >= 48 && code <= 57 do
+        ordered_digits(line, n, i + 1, acc * 10 + (code - 48))
+      else acc
+      end
+    end
+  end
+
+  -- Strip the "N. " prefix from an ordered list item.
+  pfn strip_ordered_prefix(line : String) : String do
+    let n = String.byte_size(line)
+    strip_ordered_from(line, n, 0)
+  end
+
+  pfn strip_ordered_from(line : String, n : Int, i : Int) : String do
+    if i >= n do line
+    else
+      let c = String.slice_bytes(line, i, 1)
+      let code = byte_to_code(c)
+      if code >= 48 && code <= 57 do
+        strip_ordered_from(line, n, i + 1)
+      else if c == "." && i + 2 <= n do
+        String.slice_bytes(line, i + 2, n - i - 2)
+      else line
+      end end
+    end
+  end
+
+  -- Collect consecutive ordered list items.
+  pfn collect_ordered(lines : List(String), acc : List(List(Block))) : (List(List(Block)), List(String)) do
+    match lines do
+    Nil -> (List.reverse(acc), Nil)
+    Cons(line, rest) ->
+      let t = String.trim(line)
+      if is_ordered_item(t) do
+        let item_src = strip_ordered_prefix(String.trim(line))
+        let inlines = MdInline.parse(item_src)
+        let item_blocks = Cons(Para(inlines), Nil)
+        collect_ordered(rest, Cons(item_blocks, acc))
+      else
+        (List.reverse(acc), lines)
+      end
+    end
+  end
+
+  -- True if a line looks like a table row (contains at least one `|`).
+  pfn is_table_row(line : String) : Bool do
+    has_pipe(line, String.byte_size(line), 0)
+  end
+
+  pfn has_pipe(s : String, n : Int, i : Int) : Bool do
+    if i >= n do false
+    else if String.slice_bytes(s, i, 1) == "|" do true
+    else has_pipe(s, n, i + 1)
+    end end
+  end
+
+  -- True if a line is a table separator row (only -, |, :, and spaces).
+  pfn is_table_separator(line : String) : Bool do
+    let n = String.byte_size(line)
+    if n < 3 do false
+    else is_table_sep_from(line, n, 0, false)
+    end
+  end
+
+  -- Scan a potential separator line: must contain at least one '-'.
+  pfn is_table_sep_from(line : String, n : Int, i : Int, seen_dash : Bool) : Bool do
+    if i >= n do seen_dash
+    else
+      let c = String.slice_bytes(line, i, 1)
+      if c == "-" do is_table_sep_from(line, n, i + 1, true)
+      else if c == "|" || c == ":" || c == " " do
+        is_table_sep_from(line, n, i + 1, seen_dash)
+      else false
+      end end
+    end
+  end
+
+  -- Split a pipe-separated table row into trimmed cell strings.
+  -- "|A|B|C|" → ["A","B","C"],  "A|B|C" → ["A","B","C"]
+  pfn split_table_row(line : String) : List(String) do
+    let n  = String.byte_size(line)
+    -- strip leading/trailing `|` before splitting
+    let start = if n > 0 && String.slice_bytes(line, 0, 1) == "|" do 1 else 0 end
+    let end_  = if n > 0 && String.slice_bytes(line, n - 1, 1) == "|" do n - 1 else n end
+    let inner = String.slice_bytes(line, start, end_ - start)
+    List.reverse(split_on_pipe(inner, String.byte_size(inner), 0, 0, Nil))
+  end
+
+  pfn split_on_pipe(s : String, n : Int, pos : Int, cell_start : Int, acc : List(String)) : List(String) do
+    if pos >= n do
+      let cell = String.trim(String.slice_bytes(s, cell_start, n - cell_start))
+      if String.is_empty(cell) do acc
+      else Cons(cell, acc)
+      end
+    else if String.slice_bytes(s, pos, 1) == "|" do
+      let cell = String.trim(String.slice_bytes(s, cell_start, pos - cell_start))
+      split_on_pipe(s, n, pos + 1, pos + 1, Cons(cell, acc))
+    else
+      split_on_pipe(s, n, pos + 1, cell_start, acc)
+    end end
+  end
+
+  -- Map a list of cell strings through MdInline.parse.
+  pfn map_parse_cells(cells : List(String)) : List(List(Inline)) do
+    match cells do
+    Nil -> Nil
+    Cons(c, rest) -> Cons(MdInline.parse(String.trim(c)), map_parse_cells(rest))
+    end
+  end
+
+  -- Collect consecutive table rows (lines that contain `|`).
+  pfn collect_table_rows(lines : List(String), acc : List(List(List(Inline)))) : (List(List(List(Inline))), List(String)) do
+    match lines do
+    Nil -> (List.reverse(acc), Nil)
+    Cons(line, rest) ->
+      let t = String.trim(line)
+      if is_table_row(t) do
+        let row = map_parse_cells(split_table_row(t))
+        collect_table_rows(rest, Cons(row, acc))
       else
         (List.reverse(acc), lines)
       end
