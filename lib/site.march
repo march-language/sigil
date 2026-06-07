@@ -13,4 +13,21 @@ mod Site do
     { title = "My Site", base_url = "", author = "", description = "" }
   end
 
+  -- Accessors — avoid direct record field access across modules (Perceus RC safety).
+  fn info_title(i : Info) : String do
+    i.title
+  end
+
+  fn info_author(i : Info) : String do
+    i.author
+  end
+
+  fn info_description(i : Info) : String do
+    i.description
+  end
+
+  fn info_base_url(i : Info) : String do
+    i.base_url
+  end
+
 end

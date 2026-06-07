@@ -139,6 +139,16 @@ mod Page do
     end
   end
 
+  -- Accessor for the layout field — avoids direct record field access across modules.
+  fn meta_layout(m : Meta) : String do
+    m.layout
+  end
+
+  -- Accessor for the date field — avoids direct record field access across modules.
+  fn meta_date(m : Meta) : String do
+    m.date
+  end
+
   -- Parse a YAML flow sequence like "[march, ssg]" into a List(String).
   -- Best-effort parser for simple unquoted string sequences.
   pfn parse_flow_seq(s : String) : List(String) do
