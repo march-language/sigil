@@ -1,5 +1,10 @@
 mod Build do
 
+  -- Wrapper for a user-supplied layout function.
+  -- Uses a nominal type to avoid March's curried function-type annotation ambiguity.
+  -- Usage: Build.LayoutFn(MyLayout.render)
+  type LayoutFn = LayoutFn(Site.Info -> Page.Meta -> IOList -> IOList)
+
   pfn fmt_err(e) : String do
     to_string(e)
   end
@@ -22,11 +27,28 @@ mod Build do
     end
   end
 
-  fn run(site : Config.Site) : Result(Unit, String) do
-    -- Extract fields up front so the record isn't re-passed through recursion.
-    let content_dir = site.content_dir
-    let output_dir  = site.output_dir
-    let static_dir  = site.static_dir
+  -- Apply a layout. Explicit let-bindings keep intermediate closure liveness
+  -- visible to Perceus, preventing RC underflow.
+  pfn apply_layout(lf : LayoutFn, site : Site.Info, page : Page.Meta, content : IOList) : IOList do
+    match lf do
+    LayoutFn(f) ->
+      let f1 = f(site)
+      let f2 = f1(page)
+      f2(content)
+    end
+  end
+
+  -- Default layout used by Build.run: delegates to Html.layout.
+  pfn default_layout_fn() : LayoutFn do
+    LayoutFn(fn site -> fn page -> fn content ->
+      Html.layout(page.title, IOList.empty(), content)
+    )
+  end
+
+  fn run_with_layout(cfg : Config.Site, site : Site.Info, lf : LayoutFn) : Result(Unit, String) do
+    let content_dir = cfg.content_dir
+    let output_dir  = cfg.output_dir
+    let static_dir  = cfg.static_dir
     match Dir.mkdir_p(output_dir) do
     Err(e) -> Err("cannot create output dir: " ++ fmt_err(e))
     Ok(_) ->
@@ -34,7 +56,7 @@ mod Build do
       Err(e) -> Err("cannot list content dir: " ++ fmt_err(e))
       Ok(paths) ->
         let md_paths = List.filter(paths, fn p -> is_md(p))
-        match build_all(output_dir, md_paths) do
+        match build_all_layout(output_dir, site, lf, md_paths) do
         Err(msg) -> Err(msg)
         Ok(_)    -> Assets.copy(static_dir, output_dir)
         end
@@ -42,35 +64,44 @@ mod Build do
     end
   end
 
-  pfn build_all(output_dir : String, paths : List(String)) : Result(Unit, String) do
+  pfn build_all_layout(output_dir : String, site : Site.Info, lf : LayoutFn, paths : List(String)) : Result(Unit, String) do
     match paths do
     Nil -> Ok(())
     Cons(src, rest) ->
-      match build_page(output_dir, src) do
+      match build_page_layout(output_dir, site, lf, src) do
       Err(msg) -> Err(msg)
-      Ok(_)    -> build_all(output_dir, rest)
+      Ok(_)    -> build_all_layout(output_dir, site, lf, rest)
       end
     end
   end
 
-  pfn build_page(output_dir : String, src : String) : Result(Unit, String) do
+  pfn build_page_layout(output_dir : String, site : Site.Info, lf : LayoutFn, src : String) : Result(Unit, String) do
     match File.read(src) do
     Err(e) -> Err("cannot read " ++ src ++ ": " ++ fmt_err(e))
     Ok(content) ->
-      -- Split front-matter from body (call twice to avoid tuple RC issue).
       let meta_str = front_matter_yaml(content)
       let body     = front_matter_body(content)
-      -- Derive draft flag and title directly as primitives.
       let meta     = Page.decode(src, meta_str)
       let is_draft = Page.meta_draft(meta)
-      let title    = Page.meta_title(meta)
       match is_draft do
       true -> Ok(())
       false ->
         let slug      = slug_of(src)
         let md_blocks = MdBlock.parse(body)
         let md_html   = MdRender.render(md_blocks)
-        let html      = Html.layout(title, IOList.empty(), md_html)
+        -- If no front-matter title was set, try to derive title from first heading.
+        let raw_title = Page.meta_title(meta)
+        let page_title =
+          if raw_title == slug do
+            match first_heading_text(md_blocks) do
+            None    -> raw_title
+            Some(t) -> t
+            end
+          else
+            raw_title
+          end
+        let final_meta = Page.with_title(meta, page_title)
+        let html      = apply_layout(lf, site, final_meta, md_html)
         let out       = Path.join(output_dir, slug ++ ".html")
         match File.write(out, IOList.to_string(html)) do
         Err(e) -> Err("cannot write " ++ out ++ ": " ++ fmt_err(e))
@@ -78,6 +109,43 @@ mod Build do
         end
       end
     end
+  end
+
+  -- Extract the text of the first Heading block from a list of parsed blocks.
+  -- Uses unqualified constructor names to match March's type resolution rules.
+  pfn first_heading_text(blocks : List(Block)) : Option(String) do
+    match blocks do
+    Nil -> None
+    Cons(block, rest) ->
+      match block do
+      Heading(_, _, inlines) -> Some(inlines_to_text(inlines))
+      _                      -> first_heading_text(rest)
+      end
+    end
+  end
+
+  -- Concatenate the text content of a list of inline nodes.
+  -- Uses unqualified constructor names to match March's type resolution rules.
+  pfn inlines_to_text(inlines : List(Inline)) : String do
+    match inlines do
+    Nil -> ""
+    Cons(inline, rest) ->
+      let piece = match inline do
+                  Text(s)          -> s
+                  Code(s)          -> s
+                  Emph(inner)      -> inlines_to_text(inner)
+                  Strong(inner)    -> inlines_to_text(inner)
+                  Link(_, _, inner) -> inlines_to_text(inner)
+                  Image(_, alt, _) -> alt
+                  HardBreak        -> " "
+                  SoftBreak        -> " "
+                  end
+      piece ++ inlines_to_text(rest)
+    end
+  end
+
+  fn run(site : Config.Site) : Result(Unit, String) do
+    run_with_layout(site, Site.default(), default_layout_fn())
   end
 
   -- Extract just the YAML portion from content (everything between first --- delimiters).

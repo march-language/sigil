@@ -108,6 +108,15 @@ mod Page do
     m.title
   end
 
+  -- Return a new Meta with the title field replaced.
+  fn with_title(m : Meta, t : String) : Meta do
+    { title  = t,
+      date   = m.date,
+      layout = m.layout,
+      tags   = m.tags,
+      draft  = m.draft }
+  end
+
   -- Parse a YAML flow sequence like "[march, ssg]" into a List(String).
   -- Best-effort parser for simple unquoted string sequences.
   pfn parse_flow_seq(s : String) : List(String) do

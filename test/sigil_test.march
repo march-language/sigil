@@ -344,4 +344,62 @@ mod TestSigil do
     end
   end
 
+  describe "Build.run_with_layout" do
+    test "custom layout wraps content with its own HTML structure" do
+      let tmp = "/tmp/sigil_m3a_" ++ to_string(System.monotonic_time())
+      let content_dir = Path.join(tmp, "content")
+      let output_dir  = Path.join(tmp, "out")
+      let _ = Dir.mkdir_p(content_dir)
+      let _ = File.write(Path.join(content_dir, "hello.md"), "# Hello\n\nContent.")
+      let build_cfg = { content_dir = content_dir, output_dir = output_dir, static_dir = "/tmp/no_static" }
+      let site_info = Site.default()
+      let lf = Build.LayoutFn(fn site -> fn page -> fn content ->
+        IOList.from_string("<html data-custom=\"yes\">")
+        |> IOList.append(content)
+        |> IOList.append(IOList.from_string("</html>"))
+      )
+      let result = Build.run_with_layout(build_cfg, site_info, lf)
+      assert (match result do Ok(_) -> true | Err(_) -> false end)
+      let html = match File.read(Path.join(output_dir, "hello.html")) do
+                 Ok(s) -> s | Err(_) -> "" end
+      assert (String.contains(html, "data-custom=\"yes\""))
+      assert (not (String.contains(html, "<!DOCTYPE html>")))
+      let _ = Dir.rm_rf(tmp)
+    end
+
+    test "layout receives Site.Info fields" do
+      let tmp = "/tmp/sigil_m3b_" ++ to_string(System.monotonic_time())
+      let content_dir = Path.join(tmp, "content")
+      let output_dir  = Path.join(tmp, "out")
+      let _ = Dir.mkdir_p(content_dir)
+      let _ = File.write(Path.join(content_dir, "post.md"), "# Post Title")
+      let build_cfg = { content_dir = content_dir, output_dir = output_dir, static_dir = "/tmp/no_static" }
+      let site_info = { title = "Sigil Tests", base_url = "", author = "Ada", description = "" }
+      let lf = Build.LayoutFn(fn site -> fn page -> fn content ->
+        IOList.from_string("<html><title>" ++ page.title ++ " | " ++ site.title ++ "</title></html>")
+      )
+      let _ = Build.run_with_layout(build_cfg, site_info, lf)
+      let html = match File.read(Path.join(output_dir, "post.html")) do
+                 Ok(s) -> s | Err(_) -> "" end
+      assert (String.contains(html, "Sigil Tests"))
+      assert (String.contains(html, "Post Title"))
+      let _ = Dir.rm_rf(tmp)
+    end
+
+    test "Build.run backward compat still uses Html.layout" do
+      let tmp = "/tmp/sigil_m3c_" ++ to_string(System.monotonic_time())
+      let content_dir = Path.join(tmp, "content")
+      let output_dir  = Path.join(tmp, "out")
+      let _ = Dir.mkdir_p(content_dir)
+      let _ = File.write(Path.join(content_dir, "page.md"), "hello")
+      let site = { content_dir = content_dir, output_dir = output_dir, static_dir = "/tmp/no_static" }
+      let result = Build.run(site)
+      assert (match result do Ok(_) -> true | Err(_) -> false end)
+      let html = match File.read(Path.join(output_dir, "page.html")) do
+                 Ok(s) -> s | Err(_) -> "" end
+      assert (String.contains(html, "<!DOCTYPE html>"))
+      let _ = Dir.rm_rf(tmp)
+    end
+  end
+
 end
