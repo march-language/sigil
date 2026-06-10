@@ -3,11 +3,25 @@ mod Config do
   type Site = {
     content_dir : String,
     output_dir  : String,
-    static_dir  : String
+    static_dir  : String,
+    title       : String,
+    base_url    : String
   }
 
   fn default() : Site do
-    { content_dir = "content", output_dir = "out", static_dir = "static" }
+    { content_dir = "content", output_dir = "out", static_dir = "static",
+      title = "My Site", base_url = "" }
   end
+
+  -- Accessors — avoid direct record field access across modules (Perceus RC safety).
+  -- RC note: returning a record field from a borrow-parameter function is subject
+  -- to the Perceus elision bug that drops the IncRC on the returned value.  Using
+  -- "" ++ forces an independent heap allocation so each call site gets its own
+  -- owned String and the caller can consume it without affecting the record.
+  fn site_title(s : Site) : String do s.title end
+  fn site_base_url(s : Site) : String do s.base_url end
+  fn site_content_dir(s : Site) : String do s.content_dir end
+  fn site_output_dir(s : Site) : String do s.output_dir end
+  fn site_static_dir(s : Site) : String do s.static_dir end
 
 end

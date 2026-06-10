@@ -1,0 +1,150 @@
+mod SiteIndex do
+
+  -- A single page entry in the site index.
+  -- RC note: Entry is a RECORD type (not a constructor tuple) so that accessor
+  -- functions like entry_slug, entry_title, etc. are inferred as borrow operations
+  -- by Perceus.  A tuple constructor (e.g. Entry(String, String, …)) forces every
+  -- accessor to consume the whole entry (because destructuring takes ownership of
+  -- all fields), which causes RC underflow when multiple accessors are called on
+  -- the same variable.  A record type avoids this: field projection borrows the
+  -- enclosing record, leaving it live for subsequent accesses.
+  type Entry = {
+    slug  : String,
+    title : String,
+    date  : String,
+    tags  : List(String)
+  }
+
+  -- The site index is a wrapper around a list of entries.
+  -- Using a nominal type (SiteIdx) rather than a plain List alias so that the
+  -- type-checker does not confuse it with other List(Entry) values.
+  type T = SiteIdx(List(Entry))
+
+  fn empty() do SiteIdx(Nil) end
+
+  pfn prepend(idx, e) do
+    match idx do SiteIdx(es) -> SiteIdx(Cons(e, es)) end
+  end
+
+  -- Add a page to the index.  Entries are stored in insertion order; call
+  -- sorted_by_date() when you need chronological ordering.
+  fn add(idx, slug : String, meta) do
+    let title = Page.meta_title(meta)
+    let date  = Page.meta_date(meta)
+    let tags  = Page.meta_tags(meta)
+    prepend(idx, { slug = slug, title = title, date = date, tags = tags })
+  end
+
+  -- Return entries in the order they were added.
+  fn entries(idx) do
+    match idx do SiteIdx(es) -> List.reverse(es) end
+  end
+
+  -- Split an index into two fully-independent deep copies, consuming the original.
+  --
+  -- RC note: Build.build_collections needs to traverse the same entry set with an
+  -- OWNING combinator (flat_map, to gather all tags) AND keep the entries around
+  -- for the subsequent tag-page / sitemap / feed passes.  Because the tag
+  -- accessor (entry_tags) returns the entry's tags list by borrow, that owning
+  -- traversal frees each entry's tags as it goes, corrupting any other alias of
+  -- the same list (entries come back tag-less).  Giving the destructive pass its
+  -- own deep copy — sharing no heap with the original — sidesteps the problem.
+  -- Every field is rebuilt with fresh allocations (Strings via "" ++, the tags
+  -- list via filter_map) so the two results are completely disjoint.
+  fn split(idx) : (T, T) do
+    match idx do
+    SiteIdx(es) -> do
+      match split_entries(es, Nil, Nil) do
+      (a, b) -> (SiteIdx(List.reverse(a)), SiteIdx(List.reverse(b)))
+      end
+    end
+    end
+  end
+
+  -- Consume `es` exactly once, emitting two independent deep copies (reversed).
+  pfn split_entries(es, acc_a, acc_b) : (List(Entry), List(Entry)) do
+    match es do
+    Nil -> (acc_a, acc_b)
+    Cons(e, rest) -> do
+      let copy_a = dup_entry(e)
+      let copy_b = dup_entry(e)
+      split_entries(rest, Cons(copy_a, acc_a), Cons(copy_b, acc_b))
+    end
+    end
+  end
+
+  pfn dup_entry(e : Entry) : Entry do
+    { slug  = "" ++ entry_slug(e),
+      title = "" ++ entry_title(e),
+      date  = "" ++ entry_date(e),
+      tags  = List.filter_map(entry_tags(e), fn t -> do
+                let c = "" ++ t
+                Some(c)
+              end) }
+  end
+
+  -- Return entries sorted by date descending (newest first).
+  -- Dates are ISO 8601 strings (YYYY-MM-DD); lexicographic sort is correct.
+  fn sorted_by_date(idx) do
+    let es = entries(idx)
+    -- descending: a should come before b when a.date > b.date
+    List.sort_by(es, fn (a, b) -> entry_date(a) > entry_date(b))
+  end
+
+  -- Return all entries that carry a given tag (exact match, case-sensitive).
+  fn by_tag(idx, tag : String) do
+    List.filter(entries(idx), fn e ->
+      List.any(entry_tags(e), fn t -> t == tag)
+    )
+  end
+
+  -- Return all distinct tags across all entries, sorted alphabetically.
+  fn all_tags(idx) do
+    let all = List.flat_map(entries(idx), fn e -> entry_tags(e))
+    unique_strs(all)
+  end
+
+
+  -- Return a deduplicated copy of xs: each string appears at most once.
+  -- Uses == for membership testing (content equality), so heap and static
+  -- copies of the same string are correctly treated as equal.
+  -- O(n^2) but fine for typical tag lists.
+  fn unique_strs(xs : List(String)) : List(String) do
+    unique_acc(xs, Nil)
+  end
+
+  -- Accumulate unique strings into `seen` (reverse order).
+  pfn unique_acc(xs : List(String), seen : List(String)) : List(String) do
+    match xs do
+    Nil -> seen
+    Cons(x, rest) ->
+      -- RC note: List.any(seen, _) is :own and CONSUMES seen, but seen is reused
+      -- afterward (returned as-is, or as Cons(x, seen)).  Bind the membership test
+      -- and the next-seen value as sequential lets so Perceus sees seen live past
+      -- the consuming List.any call and inserts IncRC(seen) before it.
+      let is_member = List.any(seen, fn s -> x == s)
+      let seen2 = if is_member do seen else Cons(x, seen) end
+      unique_acc(rest, seen2)
+    end
+  end
+
+  -- ── Entry accessors ─────────────────────────────────────────────────────────
+  -- These borrow their argument (record field projection) so the entry stays
+  -- live across multiple accessor calls on the same binding.
+  --
+  -- RC note: returning a record field via a borrow-parameter function works
+  -- correctly only when Perceus inserts IncRC on the returned field value.  To
+  -- avoid a compiler elision bug that can drop that IncRC, the String accessors
+  -- concatenate an empty string ("" ++) to force an independent heap allocation.
+  -- The List accessor (entry_tags) is returned directly because lists go through
+  -- a different RC path in the runtime that is not affected by the elision bug.
+
+  fn entry_slug(e : Entry) : String do e.slug end
+
+  fn entry_title(e : Entry) : String do e.title end
+
+  fn entry_date(e : Entry) : String do e.date end
+
+  fn entry_tags(e : Entry) do e.tags end
+
+end

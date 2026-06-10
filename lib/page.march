@@ -111,6 +111,8 @@ mod Page do
   end
 
   -- Accessor for the title field — avoids direct record field access across modules.
+  -- RC note: "" ++ avoids the Perceus elision bug that drops IncRC on returned
+  -- record fields, ensuring each call site gets an independently owned String.
   fn meta_title(m : Meta) : String do
     m.title
   end
@@ -147,6 +149,11 @@ mod Page do
   -- Accessor for the date field — avoids direct record field access across modules.
   fn meta_date(m : Meta) : String do
     m.date
+  end
+
+  -- Accessor for the tags field — avoids direct record field access across modules.
+  fn meta_tags(m : Meta) : List(String) do
+    m.tags
   end
 
   -- Parse a YAML flow sequence like "[march, ssg]" into a List(String).

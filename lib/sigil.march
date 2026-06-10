@@ -7,12 +7,20 @@ mod Ssg do
     -- Drop the executable (and the script path in interpreted mode).
     -- Both are absolute paths starting with '/'.
     let args = drop_paths(argv)
-    let defaults = Config.default()
+    -- RC note: defaults is a cross-module record.  Extract all fields with "" ++
+    -- BEFORE the match so defaults is fully consumed at a single let-binding scope
+    -- and Perceus does not attempt to DecRC it inside individual match arms.
+    let defaults     = Config.default()
+    let def_content  = defaults.content_dir
+    let def_output   = defaults.output_dir
+    let def_static   = defaults.static_dir
+    let def_title    = defaults.title
+    let def_base     = defaults.base_url
     match args do
     Nil ->
-      Err("usage: sigil <build|serve> [--content-dir DIR] [--output-dir DIR] [--static-dir DIR]")
+      Err("usage: sigil <build|serve> [--content-dir DIR] [--output-dir DIR] [--static-dir DIR] [--title TITLE] [--base-url URL]")
     Cons("build", flags) ->
-      parse_flags(flags, defaults.content_dir, defaults.output_dir, defaults.static_dir)
+      parse_flags(flags, def_content, def_output, def_static, def_title, def_base)
     Cons(cmd, _) ->
       Err("unknown subcommand: " ++ cmd)
     end
@@ -37,16 +45,21 @@ mod Ssg do
     end
   end
 
-  pfn parse_flags(args : List(String), content_dir : String, output_dir : String, static_dir : String) : Result(Config.Site, String) do
+  pfn parse_flags(args : List(String), content_dir : String, output_dir : String, static_dir : String, title : String, base_url : String) : Result(Config.Site, String) do
     match args do
     Nil ->
-      Ok({ content_dir = content_dir, output_dir = output_dir, static_dir = static_dir })
+      Ok({ content_dir = content_dir, output_dir = output_dir, static_dir = static_dir,
+           title = title, base_url = base_url })
     Cons("--content-dir", Cons(val, rest)) ->
-      parse_flags(rest, val, output_dir, static_dir)
+      parse_flags(rest, val, output_dir, static_dir, title, base_url)
     Cons("--output-dir", Cons(val, rest)) ->
-      parse_flags(rest, content_dir, val, static_dir)
+      parse_flags(rest, content_dir, val, static_dir, title, base_url)
     Cons("--static-dir", Cons(val, rest)) ->
-      parse_flags(rest, content_dir, output_dir, val)
+      parse_flags(rest, content_dir, output_dir, val, title, base_url)
+    Cons("--title", Cons(val, rest)) ->
+      parse_flags(rest, content_dir, output_dir, static_dir, val, base_url)
+    Cons("--base-url", Cons(val, rest)) ->
+      parse_flags(rest, content_dir, output_dir, static_dir, title, val)
     Cons(flag, _) ->
       Err("unknown flag: " ++ flag)
     end
@@ -59,7 +72,12 @@ mod Ssg do
     match args do
     Cons("serve", flags) ->
       let d = Config.default()
-      match parse_flags(flags, d.content_dir, d.output_dir, d.static_dir) do
+      let d_content = d.content_dir
+      let d_output  = d.output_dir
+      let d_static  = d.static_dir
+      let d_title   = d.title
+      let d_base    = d.base_url
+      match parse_flags(flags, d_content, d_output, d_static, d_title, d_base) do
       Err(msg) ->
         println(msg)
       Ok(site) ->

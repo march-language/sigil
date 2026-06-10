@@ -109,6 +109,127 @@
       "created_at": "2026-06-05T12:45:03.191121-04:00",
       "updated_at": "2026-06-05T12:45:03.191121-04:00",
       "metadata_json": "{\"branch\":\"main\",\"commit\":\"3351cfc\",\"confidence\":95}"
+    },
+    {
+      "id": 11,
+      "change_id": "20b89b81-3f9c-4563-97e0-bd8b65b52dca",
+      "node_type": "goal",
+      "title": "Implement MdBlock parser with ATX headings, paragraphs, thematic breaks",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-06-06T10:46:52.595018-04:00",
+      "updated_at": "2026-06-06T10:46:52.595018-04:00",
+      "metadata_json": "{\"branch\":\"main\",\"confidence\":95,\"prompt\":\"User task: Task 4 of Sigil M1 Markdown Parser - create lib/markdown/block.march with mod MdBlock\"}"
+    },
+    {
+      "id": 12,
+      "change_id": "d175aa90-9578-4b2c-8c8c-f5ec85b0476e",
+      "node_type": "action",
+      "title": "Adding MdBlock tests to test/markdown_test.march",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-06-06T10:46:55.658520-04:00",
+      "updated_at": "2026-06-06T10:46:55.658520-04:00",
+      "metadata_json": "{\"branch\":\"main\",\"confidence\":90}"
+    },
+    {
+      "id": 13,
+      "change_id": "7b9697b7-c5e2-49d8-9966-0140441b9580",
+      "node_type": "action",
+      "title": "Creating lib/markdown/block.march with MdBlock module",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-06-06T10:47:26.252439-04:00",
+      "updated_at": "2026-06-06T10:47:26.252439-04:00",
+      "metadata_json": "{\"branch\":\"main\",\"confidence\":90}"
+    },
+    {
+      "id": 14,
+      "change_id": "05003c73-a341-4b50-8c4b-6d36a8e0f4ae",
+      "node_type": "outcome",
+      "title": "All 9 MdBlock tests pass, no regressions in MdRender/MdInline (pre-existing failures in Config/Build/Ssg unaffected)",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-06-06T10:49:33.443471-04:00",
+      "updated_at": "2026-06-06T10:49:33.443471-04:00",
+      "metadata_json": "{\"branch\":\"main\",\"confidence\":99}"
+    },
+    {
+      "id": 15,
+      "change_id": "ecf435b7-e6f2-4342-9fcf-03e1377b080d",
+      "node_type": "goal",
+      "title": "Add blockquote and bullet list parsing to MdBlock",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-06-06T11:03:28.348264-04:00",
+      "updated_at": "2026-06-06T11:03:28.348264-04:00",
+      "metadata_json": "{\"branch\":\"main\",\"confidence\":95,\"prompt\":\"User asked: Task 6 of Sigil M1 Markdown Parser - extend lib/markdown/block.march to handle > blockquotes and - /* bullet lists\"}"
+    },
+    {
+      "id": 16,
+      "change_id": "f01ca763-cc5d-4a24-9a82-b9b16f80ed9b",
+      "node_type": "action",
+      "title": "Add blockquote and bullet list parsing to MdBlock",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-06-06T11:12:16.271657-04:00",
+      "updated_at": "2026-06-06T11:12:16.271657-04:00",
+      "metadata_json": "{\"branch\":\"main\",\"confidence\":95}"
+    },
+    {
+      "id": 17,
+      "change_id": "17657a17-93a7-498c-8f87-a4be4ed8d142",
+      "node_type": "outcome",
+      "title": "All 19 MdBlock tests pass including 4 new blockquote/bullet tests",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-06-06T11:12:23.766155-04:00",
+      "updated_at": "2026-06-06T11:12:23.766155-04:00",
+      "metadata_json": "{\"branch\":\"main\",\"confidence\":95}"
+    },
+    {
+      "id": 18,
+      "change_id": "35d3f0f1-0a14-46bc-b5d7-a2be503ffa9d",
+      "node_type": "goal",
+      "title": "Wire MdBlock/MdRender into Build.run (Task 7 - final M1 task)",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-06-06T11:16:33.394507-04:00",
+      "updated_at": "2026-06-06T11:16:33.394507-04:00",
+      "metadata_json": "{\"branch\":\"main\",\"confidence\":95,\"prompt\":\"User asked: implement Task 7 - replace raw body passthrough in build_page with md pipeline\"}"
+    },
+    {
+      "id": 19,
+      "change_id": "036418a0-7b5e-4467-8433-a6b6f3381320",
+      "node_type": "action",
+      "title": "Modify lib/build.march: replace raw body passthrough with MdBlock.parse + MdRender.render",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-06-06T11:16:35.708123-04:00",
+      "updated_at": "2026-06-06T11:16:35.708123-04:00",
+      "metadata_json": "{\"branch\":\"main\",\"confidence\":95}"
+    },
+    {
+      "id": 20,
+      "change_id": "a31b008b-bc45-4c9e-90a4-c6b258bde8cb",
+      "node_type": "action",
+      "title": "Add end-to-end test for markdown heading in sigil_test.march, update hello.html test to use plain markdown, regenerate .ll artifacts",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-06-06T11:23:48.496569-04:00",
+      "updated_at": "2026-06-06T11:23:48.496569-04:00",
+      "metadata_json": "{\"branch\":\"main\",\"confidence\":95}"
+    },
+    {
+      "id": 21,
+      "change_id": "0b6fe77b-ed13-4775-9ab8-77fd873e896a",
+      "node_type": "outcome",
+      "title": "Task 7 complete: MdBlock/MdRender wired into Build.run, 12/12 sigil tests pass, 49/49 markdown tests pass, smoke test shows <h1 id='hello'>Hello</h1>",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-06-06T11:24:05.156606-04:00",
+      "updated_at": "2026-06-06T11:24:05.156606-04:00",
+      "metadata_json": "{\"branch\":\"main\",\"confidence\":98}"
     }
   ],
   "edges": [
@@ -144,6 +265,72 @@
       "weight": 1.0,
       "rationale": "Implementation complete",
       "created_at": "2026-06-05T12:45:03.205532-04:00"
+    },
+    {
+      "id": 4,
+      "from_node_id": 13,
+      "to_node_id": 14,
+      "from_change_id": "7b9697b7-c5e2-49d8-9966-0140441b9580",
+      "to_change_id": "05003c73-a341-4b50-8c4b-6d36a8e0f4ae",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "action produced outcome",
+      "created_at": "2026-06-06T10:49:33.462374-04:00"
+    },
+    {
+      "id": 5,
+      "from_node_id": 15,
+      "to_node_id": 16,
+      "from_change_id": "ecf435b7-e6f2-4342-9fcf-03e1377b080d",
+      "to_change_id": "f01ca763-cc5d-4a24-9a82-b9b16f80ed9b",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "goal -> action",
+      "created_at": "2026-06-06T11:12:23.780190-04:00"
+    },
+    {
+      "id": 6,
+      "from_node_id": 16,
+      "to_node_id": 17,
+      "from_change_id": "f01ca763-cc5d-4a24-9a82-b9b16f80ed9b",
+      "to_change_id": "17657a17-93a7-498c-8f87-a4be4ed8d142",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "action -> outcome",
+      "created_at": "2026-06-06T11:12:23.793536-04:00"
+    },
+    {
+      "id": 7,
+      "from_node_id": 18,
+      "to_node_id": 19,
+      "from_change_id": "35d3f0f1-0a14-46bc-b5d7-a2be503ffa9d",
+      "to_change_id": "036418a0-7b5e-4467-8433-a6b6f3381320",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "Task 7 action under goal",
+      "created_at": "2026-06-06T11:23:48.509358-04:00"
+    },
+    {
+      "id": 8,
+      "from_node_id": 19,
+      "to_node_id": 21,
+      "from_change_id": "036418a0-7b5e-4467-8433-a6b6f3381320",
+      "to_change_id": "0b6fe77b-ed13-4775-9ab8-77fd873e896a",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "actions to outcomes",
+      "created_at": "2026-06-06T11:24:05.171248-04:00"
+    },
+    {
+      "id": 9,
+      "from_node_id": 20,
+      "to_node_id": 21,
+      "from_change_id": "a31b008b-bc45-4c9e-90a4-c6b258bde8cb",
+      "to_change_id": "0b6fe77b-ed13-4775-9ab8-77fd873e896a",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "actions to outcomes",
+      "created_at": "2026-06-06T11:24:05.182578-04:00"
     }
   ]
 }

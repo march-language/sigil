@@ -23,12 +23,14 @@ mod Build do
   pfn slug_of(path : String) : String do
     let base = Path.basename(path)
     match String.last_index_of(base, ".") do
-    None    -> base
-    Some(i) ->
-      if i == 0 do base
-      else String.slice_bytes(base, 0, i)
-      end
+    None -> base
+    Some(i) -> if i == 0 do base else String.slice_bytes(base, 0, i) end
     end
+  end
+
+  -- Convert a tag name to a URL-safe slug: lowercase, spaces → hyphens.
+  pfn tag_slug(tag : String) : String do
+    String.replace_all(String.to_lowercase(tag), " ", "-")
   end
 
   -- Apply a layout. Explicit let-bindings keep intermediate closure liveness
@@ -37,99 +39,411 @@ mod Build do
   -- LayoutFn closure by the caller.  See LayoutFn comment above.
   pfn apply_layout(lf : LayoutFn, page : Page.Meta, content : IOList) : IOList do
     match lf do
-    LayoutFn(f) ->
+    LayoutFn(f) -> do
       let f1 = f(page)
       f1(content)
+    end
     end
   end
 
   -- Default layout used by Build.run: delegates to Html.layout.
   pfn default_layout_fn() : LayoutFn do
-    LayoutFn(fn page -> fn content ->
-      Html.layout(Page.meta_title(page), IOList.empty(), content)
-    )
+    LayoutFn(fn page -> fn content -> Html.layout(Page.meta_title(page), IOList.empty(), content))
   end
 
-  -- run_with_layout: build all pages using the supplied layout function.
-  -- site info is expected to be captured inside lf — do not pass it separately,
-  -- as doing so would flow a cross-module record type through the recursive loop
-  -- and trigger Perceus RC underflow.
+  -- ─── Two-pass build ─────────────────────────────────────────────────────────
+  -- run_with_layout: two-pass build.
+  --   Pass 1: scan content files, parse front-matter, build site index.
+  --   Pass 2a: render each page to HTML using the supplied layout function.
+  --   Pass 2b: generate collection pages (tag indexes, sitemap, RSS feed).
+  -- site title and base_url for collections come from cfg.title / cfg.base_url.
+  --
+  -- RC safety: cfg is borrowed throughout (Config.site_* all take cfg:borrow),
+  -- so we can call each accessor multiple times.  We derive a fresh owned String
+  -- for every consuming callsite (Dir.mkdir_p, Dir.list_full, Assets.copy) so
+  -- that each binding is used exactly once and Perceus never needs to emit a
+  -- speculative IncRC across a match-arm boundary.
   fn run_with_layout(cfg : Config.Site, lf : LayoutFn) : Result(Unit, String) do
-    let content_dir = cfg.content_dir
-    let output_dir  = cfg.output_dir
-    let static_dir  = cfg.static_dir
-    match Dir.mkdir_p(output_dir) do
+    -- mkdir consumes its argument; derive a dedicated binding for it.
+    let output_dir_mk = Config.site_output_dir(cfg)
+    match Dir.mkdir_p(output_dir_mk) do
     Err(e) -> Err("cannot create output dir: " ++ fmt_err(e))
-    Ok(_) ->
-      match Dir.list_full(content_dir) do
+    Ok(_) -> do
+      -- Pass 1: list content_dir and build the site index.
+      -- Dir.list_full consumes content_dir_p1; derive a fresh copy.
+      let content_dir_p1 = Config.site_content_dir(cfg)
+      match Dir.list_full(content_dir_p1) do
       Err(e) -> Err("cannot list content dir: " ++ fmt_err(e))
-      Ok(paths) ->
-        let md_paths = List.filter(paths, fn p -> is_md(p))
-        match build_all_layout(output_dir, lf, md_paths) do
-        Err(msg) -> Err(msg)
-        Ok(_)    -> Assets.copy(static_dir, output_dir)
+      Ok(paths_p1) -> do
+        let md_paths_p1 = List.filter(paths_p1, fn p -> is_md(p))
+        let idx         = collect_index(md_paths_p1, SiteIndex.empty())
+        -- Pass 2a: list content_dir again for the render pass.
+        -- Each Dir.list_full is a separate consume; fresh binding required.
+        let content_dir_p2 = Config.site_content_dir(cfg)
+        match Dir.list_full(content_dir_p2) do
+        Err(e) -> Err("cannot list content dir (pass 2): " ++ fmt_err(e))
+        Ok(paths_p2) -> do
+          let md_paths_p2 = List.filter(paths_p2, fn p -> is_md(p))
+          -- Derive all remaining owned values from cfg before the consuming calls.
+          let output_dir_p2a = Config.site_output_dir(cfg)
+          let output_dir_p2b = Config.site_output_dir(cfg)
+          let output_dir_cpy = Config.site_output_dir(cfg)
+          let site_title     = Config.site_title(cfg)
+          let base_url       = Config.site_base_url(cfg)
+          let static_dir     = Config.site_static_dir(cfg)
+          -- Pass 2a: render pages (build_all_layout borrows output_dir_p2a).
+          match build_all_layout(output_dir_p2a, lf, md_paths_p2) do
+          Err(msg) -> Err(msg)
+          Ok(_) -> do
+            -- Pass 2b: generate collections (build_collections borrows output_dir_p2b).
+            match build_collections(output_dir_p2b, site_title, base_url, idx) do
+            Err(msg) -> Err(msg)
+            -- Assets.copy consumes both its args; use the dedicated copies.
+            Ok(_) -> Assets.copy(static_dir, output_dir_cpy)
+            end
+          end
+          end
+        end
         end
       end
+      end
+    end
     end
   end
 
+  -- Pass 1: collect index (reads content_dir independently of pass 2)
+  -- Pass 2a: render pages
+  -- Pass 2b: generate collections
+  -- ─── Pass 1: collect site index ─────────────────────────────────────────────
+  pfn collect_index_from_dir(content_dir : String) do
+    match Dir.list_full(content_dir) do
+    Err(_) -> SiteIndex.empty()
+    Ok(paths) -> do
+      let md_paths = List.filter(paths, fn p -> is_md(p))
+      collect_index(md_paths, SiteIndex.empty())
+    end
+    end
+  end
+
+  pfn collect_index(paths : List(String), idx) do
+    match paths do
+    Nil -> idx
+    Cons(src, rest) -> do
+      let new_idx = collect_one(src, idx)
+      collect_index(rest, new_idx)
+    end
+    end
+  end
+
+  pfn collect_one(src : String, idx) do
+    -- RC note: src is a function parameter used in the scrutinee (File.read(src))
+    -- AND in the Ok arm (Page.decode(src, ...) and slug_of(src)).  Pre-capture the
+    -- slug and a decode closure BEFORE File.read so all three consuming uses of src
+    -- are visible at the same scope level and Perceus inserts the right IncRCs.
+    let slug    = slug_of(src)
+    let on_meta = fn ms -> Page.decode(src, ms)
+    match File.read(src) do
+    Err(_) -> idx
+    Ok(content) -> do
+      let meta_str = front_matter_yaml(content)
+      let meta = on_meta(meta_str)
+      -- RC note: meta is consumed by Page.meta_draft before the match arm that uses
+      -- SiteIndex.add.  Capture the add continuation before the draft check so both
+      -- uses of meta are visible at the same scope level.
+      let add_fn = fn _ -> SiteIndex.add(idx, slug, meta)
+      let is_draft = Page.meta_draft(meta)
+      match is_draft do
+      true -> idx
+      false -> add_fn(())
+      end
+    end
+    end
+  end
+
+  -- ─── Pass 2a: render pages ───────────────────────────────────────────────────
+  -- RC note: lf is owned (consumed by build_page_layout on each iteration).
+  -- Perceus cannot see the second use of lf (in the recursive call) across the
+  -- match-arm boundary when it appears as the scrutinee's argument.  We extract
+  -- a continuation closure BEFORE the first consuming call so that both uses of
+  -- lf are visible at the same scope level; Perceus then inserts IncRC(lf) for
+  -- the closure capture, keeping lf alive for the recursive step.
   pfn build_all_layout(output_dir : String, lf : LayoutFn, paths : List(String)) : Result(Unit, String) do
     match paths do
     Nil -> Ok(())
-    Cons(src, rest) ->
+    Cons(src, rest) -> do
+      -- Capture the recursive continuation BEFORE lf is consumed by build_page_layout.
+      -- Both uses of lf are now visible at the same let-binding level.
+      let recurse = fn _ -> build_all_layout(output_dir, lf, rest)
       match build_page_layout(output_dir, lf, src) do
       Err(msg) -> Err(msg)
-      Ok(_)    -> build_all_layout(output_dir, lf, rest)
+      Ok(_) -> recurse(())
       end
+    end
     end
   end
 
   pfn build_page_layout(output_dir : String, lf : LayoutFn, src : String) : Result(Unit, String) do
+    -- RC note: src is a function parameter used in four places:
+    -- 1) File.read(src) scrutinee (consuming if File.read is :own)
+    -- 2) Err arm error message string
+    -- 3) Ok arm: Page.decode(src, meta_str)
+    -- 4) Ok arm: slug_of(src)  <- pre-computed as slug at outer scope
+    -- Pre-capture uses 2-4 as closures/values BEFORE File.read so all four
+    -- consuming uses are at the same sequential scope level, letting Perceus
+    -- insert 3 IncRCs for src.
+    let slug    = slug_of(src)
+    let on_err  = fn e -> Err("cannot read " ++ src ++ ": " ++ fmt_err(e))
+    let on_meta = fn ms -> Page.decode(src, ms)
     match File.read(src) do
-    Err(e) -> Err("cannot read " ++ src ++ ": " ++ fmt_err(e))
-    Ok(content) ->
-      let meta_str = front_matter_yaml(content)
-      let body     = front_matter_body(content)
-      let meta     = Page.decode(src, meta_str)
-      let is_draft = Page.meta_draft(meta)
-      match is_draft do
-      true -> Ok(())
-      false ->
-        let slug      = slug_of(src)
-        let md_blocks = MdBlock.parse(body)
-        let md_html   = MdRender.render(md_blocks)
-        -- If no front-matter title was set, try to derive title from first heading.
-        let raw_title = Page.meta_title(meta)
-        let page_title =
-          if Page.has_title(meta) do
-            raw_title
-          else
-            match first_heading_text(md_blocks) do
-            None    -> raw_title
-            Some(t) -> t
-            end
+    Err(e) -> on_err(e)
+    Ok(content) -> do
+      -- RC note: FrontMatter.split(content:own) consumes content in a single call.
+      match FrontMatter.split(content) do
+      (meta_str, body) -> do
+        let meta = on_meta(meta_str)
+        -- RC note: both first_heading_text and MdRender.render consume md_blocks.
+        -- Placing both bindings at the same sequential scope makes both uses visible
+        -- to Perceus.
+        let md_blocks   = MdBlock.parse(body)
+        let heading_opt = first_heading_text(md_blocks)
+        let md_html     = MdRender.render(md_blocks)
+        -- RC note: meta_draft/meta_title/has_title all BORROW meta; with_title
+        -- OWNS it (last consuming use).  All four calls are at the same sequential
+        -- scope with no closures capturing meta, so Perceus correctly sees that
+        -- only with_title consumes meta and inserts no spurious early DecRCs.
+        let is_draft    = Page.meta_draft(meta)
+        let raw_title   = Page.meta_title(meta)
+        let has_title_b = Page.has_title(meta)
+        let page_title  = if has_title_b do
+                            raw_title
+                          else
+                            match heading_opt do
+                            Some(t) -> t
+                            None    -> raw_title
+                            end
+                          end
+        let final_meta  = Page.with_title(meta, page_title)
+        match is_draft do
+        true  -> Ok(())
+        false -> do
+          let html = apply_layout(lf, final_meta, md_html)
+          let out  = Path.join(output_dir, slug ++ ".html")
+          match File.write(out, IOList.to_string(html)) do
+          Err(e) -> Err("cannot write " ++ out ++ ": " ++ fmt_err(e))
+          Ok(_)  -> Ok(())
           end
-        let final_meta = Page.with_title(meta, page_title)
-        let html      = apply_layout(lf, final_meta, md_html)
-        let out       = Path.join(output_dir, slug ++ ".html")
-        match File.write(out, IOList.to_string(html)) do
-        Err(e) -> Err("cannot write " ++ out ++ ": " ++ fmt_err(e))
-        Ok(_)  -> Ok(())
+        end
         end
       end
+      end
+    end
     end
   end
 
+  -- If no front-matter title was set, try to derive title from first heading.
+  -- ─── Pass 2b: generate collections ──────────────────────────────────────────
+  -- Build all collection outputs: tag index pages, sitemap.xml, feed.xml.
+  --
+  -- RC note: sorted is consumed by tags_of_entries, build_tag_pages, write_sitemap,
+  -- and write_feed.  The previous closure-based approach (run_collections capturing
+  -- sorted) made sorted a _borrowed_field_var inside the closure, which suppresses
+  -- Perceus IncRC for nested closure captures — recurse_sitemap and recurse_tag
+  -- each captured sorted without IncRC, causing use-after-free when the first
+  -- caller freed it.
+  --
+  -- Fix: no closures.  build_tag_dir is called first (before sorted is computed)
+  -- so an early-exit Err path never touches sorted at all.  On the Ok path, sorted
+  -- is a plain let-binding and the four consuming callers are at the same sequential
+  -- scope level inside the Ok arm, so Perceus correctly inserts IncRCs for each
+  -- non-last use.  output_dir and base_url are borrowed throughout (Path.join
+  -- borrows both args), so no IncRC is needed for them either.
+  pfn build_collections(output_dir : String, site_title : String, base_url : String, idx) : Result(Unit, String) do
+    match build_tag_dir(output_dir) do
+    Err(e) -> Err(e)
+    Ok(_) -> do
+      let sorted = SiteIndex.sorted_by_date(idx)
+      -- RC note: entry_tags returns the entry's tags list BORROWED (the entry
+      -- owns it; there is no userland way to deep-copy a borrowed list).  So
+      -- the tags lists must be read exactly ONCE.  Do a single pass that copies
+      -- each (tag, slug, title) into owned triples; all later tag work (unique
+      -- tag names, per-tag filtering) uses only the triples.  sitemap/feed read
+      -- only the entries' string fields, whose accessors return fresh copies.
+      let triples = List.flat_map(sorted, fn e -> do
+        let slug  = SiteIndex.entry_slug(e)
+        let title = SiteIndex.entry_title(e)
+        List.map(SiteIndex.entry_tags(e), fn t -> ("${t}", slug, title))
+      end)
+      let tags = SiteIndex.unique_strs(List.map(triples, fn tr -> match tr do (t, _, _) -> t end))
+      match build_tag_pages(output_dir, tags, triples) do
+      Err(e) -> Err(e)
+      Ok(_) -> do
+        match write_sitemap(output_dir, base_url, sorted) do
+        Err(e) -> Err(e)
+        Ok(_) -> write_feed(output_dir, site_title, base_url, sorted)
+        end
+      end
+      end
+    end
+    end
+  end
+
+  -- ─── Tag index pages ─────────────────────────────────────────────────────────
+  pfn build_tag_dir(output_dir : String) : Result(Unit, String) do
+    let tag_dir = Path.join(output_dir, "tag")
+    match Dir.mkdir_p(tag_dir) do
+    Err(e) -> Err("cannot create tag dir: " ++ fmt_err(e))
+    Ok(_) -> Ok(())
+    end
+  end
+
+  -- tags: distinct tag names; triples: owned (tag, slug, title) rows built by
+  -- the single tag pass in build_collections.
+  pfn build_tag_pages(output_dir : String, tags : List(String), triples) : Result(Unit, String) do
+    match tags do
+    Nil -> Ok(())
+    Cons(tag, rest_tags) -> do
+      let slug = tag_slug(tag)
+      -- RC note: triples is consumed by List.filter AND by the recursive call.
+      -- Capture the recursive continuation BEFORE the consuming List.filter call
+      -- so both uses of triples are visible to Perceus at the same scope level.
+      let recurse = fn _ -> build_tag_pages(output_dir, rest_tags, triples)
+      let tagged =
+        List.filter(triples, fn tr -> match tr do (t, _, _) -> t == tag end)
+      match write_tag_page(output_dir, tag, slug, tagged) do
+      Err(e) -> Err(e)
+      Ok(_) -> recurse(())
+      end
+    end
+    end
+  end
+
+  pfn write_tag_page(output_dir : String, tag : String, slug : String, triples) : Result(Unit, String) do
+    let title = "Posts tagged: " ++ tag
+    let items = tag_page_items(triples)
+    let body_html =
+      IOList.from_string("<h1>")
+        |> IOList.append(IOList.from_string(Html.escape(title)))
+        |> IOList.append(IOList.from_string("</h1><ul>"))
+        |> IOList.append(items)
+        |> IOList.append(IOList.from_string("</ul>"))
+    let page_html = Html.layout(title, IOList.empty(), body_html)
+    let path = Path.join(Path.join(output_dir, "tag"), slug ++ ".html")
+    match File.write(path, IOList.to_string(page_html)) do
+    Err(e) -> Err("cannot write tag page " ++ path ++ ": " ++ fmt_err(e))
+    Ok(_) -> Ok(())
+    end
+  end
+
+  pfn tag_page_items(triples) : IOList do
+    -- Each triple is an owned (tag, slug, title) row built by build_collections;
+    -- the strings are independent copies, so destructuring here is RC-safe.
+    Html.list(triples, fn tr -> do
+      match tr do
+      (_, slug, title) ->
+        IOList.from_string("<li><a href=\"/" ++ slug ++ ".html\">" ++ Html.escape(title) ++ "</a></li>")
+      end
+    end)
+  end
+
+  -- ─── Sitemap ─────────────────────────────────────────────────────────────────
+  pfn write_sitemap(output_dir : String, base_url : String, entries) : Result(Unit, String) do
+    let xml = sitemap_xml(base_url, entries)
+    let path = Path.join(output_dir, "sitemap.xml")
+    match File.write(path, xml) do
+    Err(e) -> Err("cannot write sitemap: " ++ fmt_err(e))
+    Ok(_) -> Ok(())
+    end
+  end
+
+  pfn sitemap_xml(base_url : String, entries) : String do
+    let prefix = if String.is_empty(base_url) do "" else base_url end
+    let items = sitemap_items(prefix, entries)
+    """<?xml version="1.0" encoding="UTF-8"?>
+""" ++ """<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+""" ++ items ++ "</urlset>\n"
+  end
+
+  pfn sitemap_items(base_url : String, entries) : String do
+    match entries do
+    Nil -> ""
+    Cons(e, rest) -> do
+      -- RC note: both entry_slug and entry_date borrow e; bind them explicitly
+      -- at the same let-level before any other expression uses them so Perceus
+      -- can see all borrow sites simultaneously.
+      let slug = SiteIndex.entry_slug(e)
+      let date = SiteIndex.entry_date(e)
+      let _ = e   -- ensure e is live until all borrows are bound
+      let loc = base_url ++ "/" ++ slug ++ ".html"
+      let lastmod =
+        if String.is_empty(date) do
+          ""
+        else
+          "  <lastmod>" ++ date ++ """</lastmod>
+"""
+        end
+      let item = """  <url>
+  <loc>""" ++ loc ++ "</loc>\n" ++ lastmod ++ "  </url>\n"
+      item ++ sitemap_items(base_url, rest)
+    end
+    end
+  end
+
+  -- ─── RSS feed ────────────────────────────────────────────────────────────────
+  pfn write_feed(output_dir : String, site_title : String, base_url : String, entries) : Result(Unit, String) do
+    let xml = feed_xml(site_title, base_url, entries)
+    let path = Path.join(output_dir, "feed.xml")
+    match File.write(path, xml) do
+    Err(e) -> Err("cannot write feed: " ++ fmt_err(e))
+    Ok(_) -> Ok(())
+    end
+  end
+
+  pfn feed_xml(site_title : String, base_url : String, entries) : String do
+    -- RC note: base_url is :borrow in feed_items; compute items first so the
+    -- same base_url value is used for both feed_items and Html.escape(ch_link)
+    -- without aliasing it through a let-binding (which would move ownership).
+    let ch_title = if String.is_empty(site_title) do "My Site" else site_title end
+    let items = feed_items(base_url, entries)
+    """<?xml version="1.0" encoding="UTF-8"?>
+""" ++ """<rss version="2.0">
+""" ++ "<channel>\n" ++ "  <title>" ++ Html.escape(ch_title) ++ "</title>\n" ++ "  <link>" ++ Html.escape(base_url) ++ "</link>\n" ++ items ++ """</channel>
+""" ++ "</rss>\n"
+  end
+
+  pfn feed_items(base_url : String, entries) : String do
+    match entries do
+    Nil -> ""
+    Cons(e, rest) -> do
+      let slug = SiteIndex.entry_slug(e)
+      let title = SiteIndex.entry_title(e)
+      let date = SiteIndex.entry_date(e)
+      let link = base_url ++ "/" ++ slug ++ ".html"
+      let pubdate =
+        if String.is_empty(date) do
+          ""
+        else
+          "    <pubDate>" ++ date ++ """</pubDate>
+"""
+        end
+      let item =
+        "  <item>\n" ++ "    <title>" ++ Html.escape(title) ++ "</title>\n" ++ "    <link>" ++ Html.escape(link) ++ "</link>\n" ++ pubdate ++ "  </item>\n"
+      item ++ feed_items(base_url, rest)
+    end
+    end
+  end
+
+  -- ─── Heading text helpers ────────────────────────────────────────────────────
   -- Extract the text of the first Heading block from a list of parsed blocks.
   -- Uses unqualified constructor names to match March's type resolution rules.
   pfn first_heading_text(blocks : List(Block)) : Option(String) do
     match blocks do
     Nil -> None
-    Cons(block, rest) ->
+    Cons(block, rest) -> do
       match block do
       Heading(_, _, inlines) -> Some(inlines_to_text(inlines))
-      _                      -> first_heading_text(rest)
+      _ -> first_heading_text(rest)
       end
+    end
     end
   end
 
@@ -138,25 +452,29 @@ mod Build do
   pfn inlines_to_text(inlines : List(Inline)) : String do
     match inlines do
     Nil -> ""
-    Cons(inline, rest) ->
-      let piece = match inline do
-                  Text(s)          -> s
-                  Code(s)          -> s
-                  Emph(inner)      -> inlines_to_text(inner)
-                  Strong(inner)    -> inlines_to_text(inner)
-                  Link(_, _, inner) -> inlines_to_text(inner)
-                  Image(_, alt, _) -> alt
-                  HardBreak        -> " "
-                  SoftBreak        -> " "
-                  end
+    Cons(inline, rest) -> do
+      let piece =
+        match inline do
+        Text(s) -> s
+        Code(s) -> s
+        Emph(inner) -> inlines_to_text(inner)
+        Strong(inner) -> inlines_to_text(inner)
+        Link(_, _, inner) -> inlines_to_text(inner)
+        Image(_, alt, _) -> alt
+        HardBreak -> " "
+        SoftBreak -> " "
+        end
       piece ++ inlines_to_text(rest)
+    end
     end
   end
 
+  -- ─── Public API ──────────────────────────────────────────────────────────────
   fn run(cfg : Config.Site) : Result(Unit, String) do
     run_with_layout(cfg, default_layout_fn())
   end
 
+  -- ─── Front-matter helpers ────────────────────────────────────────────────────
   -- Extract just the YAML portion from content (everything between first --- delimiters).
   pfn front_matter_yaml(content : String) : String do
     match FrontMatter.split(content) do
