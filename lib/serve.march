@@ -23,7 +23,7 @@ mod Serve do
     end
   end
 
-  pfn serve_page(slug : String, conn : HttpServer.Conn) : HttpServer.Conn do
+  pfn serve_page(slug : String, conn) do
     let output_dir = get_output_dir()
     let path = Path.join(output_dir, slug ++ ".html")
     match File.read(path) do
@@ -32,13 +32,13 @@ mod Serve do
     end
   end
 
-  pfn ws_handler(socket : WebSocket.WsSocket) : Unit do
+  pfn ws_handler(socket) do
     let output_dir = get_output_dir()
     let initial_v = Watcher.read_version(output_dir)
     ws_loop(output_dir, socket, initial_v)
   end
 
-  pfn ws_loop(output_dir : String, socket : WebSocket.WsSocket, last_v : Int) : Unit do
+  pfn ws_loop(output_dir : String, socket, last_v : Int) : Unit do
     match WebSocket.select(socket, 300) do
     Timeout ->
       let v = Watcher.read_version(output_dir)
@@ -54,7 +54,7 @@ mod Serve do
     end
   end
 
-  pfn router(conn : HttpServer.Conn) : HttpServer.Conn do
+  pfn router(conn) do
     -- Note: atom pattern matching (`match m do :get -> ...`) is broken in compiled
     -- binaries (the compiler always selects the wildcard arm).  Use == comparison
     -- on the atom value instead.
@@ -78,28 +78,26 @@ mod Serve do
   -- incrc before each non-final use), unlike locally-extracted record fields.
   -- The public fn run() just extracts site fields and delegates to prun().
   --
-  -- output_dir and static_dir are stored in process environment variables
-  -- (SIGIL_OUTPUT_DIR, SIGIL_STATIC_DIR) so that the HTTP handler and watcher
-  -- can read fresh copies per request/iteration via System.env(), avoiding
-  -- Perceus single-call-closure RC underflow.
+  -- output_dir, static_dir, and content_dir are stored in process environment
+  -- variables (SIGIL_OUTPUT_DIR, SIGIL_STATIC_DIR, SIGIL_CONTENT_DIR) so that the
+  -- HTTP handler and watcher can read fresh copies per request/iteration via
+  -- System.env(), avoiding Perceus single-call-closure RC underflow.
   --
-  -- NOTE: task_spawn with heap-allocating lambdas currently crashes in compiled
-  -- binaries due to a march runtime bug (RC underflow in the green thread
-  -- scheduler when the task function allocates heap objects such as strings).
-  -- The watcher is started but may abort immediately in compiled mode.
-  -- It works correctly in interpreted mode (march file.march).
+  -- task_spawn uses a zero-capture lambda: fn _ -> Watcher.watch_env()
+  -- Watcher.watch_env() reads SIGIL_CONTENT_DIR from the environment, so the
+  -- closure has no heap-allocated fields for the march scheduler to RC-manage,
+  -- which was the root cause of the previous crash in compiled binaries.
   pfn prun(content_dir : String, output_dir : String, static_dir : String, port : Int) : Unit do
     let _ = System.put_env("SIGIL_OUTPUT_DIR", output_dir)
     let _ = System.put_env("SIGIL_STATIC_DIR", static_dir)
-    let build_site = { content_dir = content_dir, output_dir = output_dir, static_dir = static_dir }
+    let _ = System.put_env("SIGIL_CONTENT_DIR", content_dir)
+    let build_site = { content_dir = content_dir, output_dir = output_dir, static_dir = static_dir,
+                       title = "", base_url = "" }
     let _ = Build.run(build_site)
     println("[sigil] built")
-    -- NOTE: task_spawn with heap-allocating lambdas crashes in compiled binaries
-    -- (march runtime RC underflow in green-thread scheduler).  The watcher is
-    -- disabled here to allow the HTTP server to start.  It works correctly in
-    -- interpreted mode.  See lib/serve.march comment for the full explanation.
-    -- TODO: re-enable when the march runtime task_spawn bug is fixed:
-    --   let _ = task_spawn(fn _ -> Watcher.watch(content_dir))
+    -- Zero-capture lambda: fn _ -> Watcher.watch_env() captures no heap values.
+    -- Watcher.watch_env reads SIGIL_CONTENT_DIR from the environment set above.
+    let _ = task_spawn(fn _ -> Watcher.watch_env())
     println("[sigil] serving http://localhost:" ++ int_to_string(port))
     println("[sigil] press Ctrl+C to stop")
     -- Use http_server_listen directly instead of the HttpServer.plug/listen pipeline.

@@ -12,6 +12,16 @@ mod Watcher do
     end
   end
 
+  -- Read the content directory from the process environment.
+  -- Serve.prun sets SIGIL_CONTENT_DIR before spawning the watcher task so that
+  -- watch_env() can be called as a zero-capture lambda (no closure fields).
+  fn get_content_dir() : String do
+    match System.env("SIGIL_CONTENT_DIR") do
+    Some(d) -> d
+    None    -> "content"
+    end
+  end
+
   fn version_path(output_dir : String) : String do
     Path.join(output_dir, ".sigil-reload")
   end
@@ -63,6 +73,15 @@ mod Watcher do
     watch_loop(content_dir, 0, 0)
   end
 
+  -- Zero-capture entry point for task_spawn.  Reads content_dir from the
+  -- SIGIL_CONTENT_DIR process environment variable set by Serve.prun, so the
+  -- spawned lambda captures no heap values and the march task scheduler does not
+  -- need to RC-manage any closure fields.
+  --   task_spawn(fn _ -> Watcher.watch_env())
+  fn watch_env() : Unit do
+    watch(get_content_dir())
+  end
+
   pfn watch_loop(content_dir : String, last_mtime : Int, version : Int) : Unit do
     -- Note: Dir.list_full and Build.run both scan flat (no subdirs).
     let _ = System.cmd("sleep", Cons("0.3", Nil))
@@ -70,7 +89,8 @@ mod Watcher do
     if current > last_mtime do
       let output_dir = get_output_dir()
       let static_dir = match System.env("SIGIL_STATIC_DIR") do Some(d) -> d | None -> "static" end
-      let site = { content_dir = content_dir, output_dir = output_dir, static_dir = static_dir }
+      let site = { content_dir = content_dir, output_dir = output_dir, static_dir = static_dir,
+                   title = "", base_url = "" }
       match Build.run(site) do
       Err(msg) ->
         println("[sigil] build error: " ++ msg)
