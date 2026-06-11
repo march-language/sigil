@@ -104,7 +104,17 @@ mod Scaffold do
     if Dir.exists(dir) do
       Err("target directory already exists: " ++ dir ++ " (refusing to overwrite)")
     else
-      create_files(dir)
+      -- Keep an independent copy of `dir` so a partial failure mid-scaffold can be
+      -- rolled back.  Without this, a half-created tree would block re-running
+      -- (create refuses when the dir already exists), stranding the user.
+      let dir_clean = "" ++ dir
+      match create_files(dir) do
+      Ok(_)  -> Ok(())
+      Err(m) -> do
+        let _ = Dir.rm_rf(dir_clean)
+        Err(m)
+      end
+      end
     end
   end
 

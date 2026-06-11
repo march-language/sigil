@@ -71,11 +71,14 @@ mod Ssg do
     let args = drop_paths(System.argv())
     match args do
     Cons("new", Cons(dir, _)) ->
+      -- Independent copy for the success message: Scaffold.create consumes `dir`,
+      -- so capture the path for next_steps before that consuming call.
+      let dir_msg = "" ++ dir
       match Scaffold.create(dir) do
       Err(msg) ->
         println("error: " ++ msg)
       Ok(_) ->
-        println(Scaffold.next_steps(dir))
+        println(Scaffold.next_steps(dir_msg))
       end
     Cons("new", Nil) ->
       println("usage: sigil new DIR")
