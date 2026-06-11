@@ -452,9 +452,9 @@ mod Build do
 
   -- ─── Excerpt helpers ─────────────────────────────────────────────────────────
   -- Compute a plain-text excerpt from a markdown body: parse to blocks, take the
-  -- text of the first paragraph (falling back to the first heading, then to the
-  -- raw body), trim it, cap it at ~200 bytes, and neutralise any literal "]]>"
-  -- so the result is safe to embed inside an RSS <![CDATA[ ... ]]> section.
+  -- text of the first paragraph (falling back to the raw body when there is none),
+  -- trim it, cap it at ~200 bytes, and neutralise any literal "]]>" so the result
+  -- is safe to embed inside an RSS <![CDATA[ ... ]]> section.
   pfn excerpt_of(body : String) : String do
     let blocks = MdBlock.parse(body)
     let para   = first_paragraph_text(blocks)
@@ -466,10 +466,18 @@ mod Build do
     cdata_safe(truncate_excerpt(String.trim(raw)))
   end
 
-  -- Cap a string at 200 bytes (no word-boundary handling — kept simple/robust).
+  -- Cap a string at ~200 bytes WITHOUT splitting a multibyte UTF-8 character.
+  -- March has only byte-based slicing, so we cut at the last ASCII space within
+  -- the first 200 bytes (a space is always a single-byte char boundary).  If
+  -- there is no space in range (e.g. scriptless text), we keep the full string
+  -- rather than risk slicing mid-character — the result is always valid UTF-8.
   pfn truncate_excerpt(s : String) : String do
     if String.byte_size(s) > 200 do
-      String.slice_bytes(s, 0, 200) ++ "…"
+      let head = String.slice_bytes(s, 0, 200)
+      match String.last_index_of(head, " ") do
+      Some(i) -> String.slice_bytes(head, 0, i) ++ "…"
+      None    -> s
+      end
     else
       s
     end
@@ -533,21 +541,6 @@ mod Build do
   -- ─── Public API ──────────────────────────────────────────────────────────────
   fn run(cfg : Config.Site) : Result(Unit, String) do
     run_with_layout(cfg, default_layout_fn())
-  end
-
-  -- ─── Front-matter helpers ────────────────────────────────────────────────────
-  -- Extract just the YAML portion from content (everything between first --- delimiters).
-  pfn front_matter_yaml(content : String) : String do
-    match FrontMatter.split(content) do
-    (yaml, _) -> yaml
-    end
-  end
-
-  -- Extract just the body portion from content (everything after the closing --- delimiter).
-  pfn front_matter_body(content : String) : String do
-    match FrontMatter.split(content) do
-    (_, body) -> body
-    end
   end
 
 end
