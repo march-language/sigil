@@ -38,6 +38,12 @@ mod Build do
   -- across subdirectories.  (Mirroring the subdir tree into the output needs
   -- the content-root threaded through the render pass; deferred.)
   --
+  -- LIMITATION: `Dir.exists` follows symlinks (stat, not lstat), so a directory
+  -- symlink that points at an ancestor (content/loop -> content/) would recurse
+  -- forever.  Do not place directory symlink cycles under the content dir.  A
+  -- visited-set guard is deferred (it would thread another list through the walk,
+  -- which the native RC path handles poorly).
+  --
   -- RC note: this is a tail-recursive worklist walk over a single accumulator,
   -- mirroring the isolation-verified minimal walker; `p` is used at most twice
   -- per iteration (Dir.exists + Dir.list_full, or is_md + Cons), which Perceus
@@ -155,9 +161,6 @@ mod Build do
   -- Pass 2a: render pages
   -- Pass 2b: generate collections
   -- ─── Pass 1: collect site index ─────────────────────────────────────────────
-  pfn collect_index_from_dir(content_dir : String) do
-    collect_index(collect_md(content_dir), SiteIndex.empty())
-  end
 
   pfn collect_index(paths : List(String), idx) do
     match paths do

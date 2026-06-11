@@ -79,7 +79,7 @@ mod Watcher do
   end
 
   pfn watch_loop(content_dir : String, last_mtime : Int, version : Int) : Unit do
-    -- Note: Dir.list_full and Build.run both scan flat (no subdirs).
+    -- Note: max_mtime and Build.run both recurse into subdirectories (Build.collect_md).
     let _ = System.cmd("sleep", Cons("0.3", Nil))
     let current = max_mtime(content_dir)
     if current > last_mtime do
