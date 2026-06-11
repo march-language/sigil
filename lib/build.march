@@ -63,10 +63,13 @@ mod Build do
   -- visibly different structure from plain "default" pages.
   pfn post_layout_fn() : LayoutFn do
     LayoutFn(fn page -> fn content -> do
-      -- RC note: page borrows for meta_title/meta_date; both accessors return
-      -- fresh owned Strings, so reading them sequentially here is RC-safe.
-      let title = Page.meta_title(page)
-      let date  = Page.meta_date(page)
+      -- RC note: page borrows for meta_title/meta_date; the accessors return
+      -- fresh owned Strings, so reading them sequentially here is RC-safe.  Bind
+      -- a separate doc_title for the <title> element since `title` is consumed by
+      -- the header concat below (bind-once / use-once house style).
+      let title     = Page.meta_title(page)
+      let doc_title = Page.meta_title(page)
+      let date      = Page.meta_date(page)
       let date_html =
         if String.is_empty(date) do
           ""
@@ -85,7 +88,7 @@ mod Build do
         |> IOList.append(IOList.from_string("<article class=\"post-body\">"))
         |> IOList.append(content)
         |> IOList.append(IOList.from_string("</article>"))
-      Html.layout(Page.meta_title(page), IOList.empty(), body)
+      Html.layout(doc_title, IOList.empty(), body)
     end)
   end
 

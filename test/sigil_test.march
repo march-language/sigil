@@ -577,6 +577,24 @@ mod TestSigil do
       let _ = Dir.rm_rf(tmp)
     end
 
+    test "layout: post with no date omits the <time> element" do
+      let tmp         = "/tmp/sigil_layout_nodate_" ++ to_string(System.monotonic_time())
+      let content_dir = Path.join(tmp, "content")
+      let output_dir  = Path.join(tmp, "out")
+      let _ = Dir.mkdir_p(content_dir)
+      let _ = File.write(Path.join(content_dir, "undated.md"),
+                         "---\ntitle: Undated Post\nlayout: post\n---\n\nBody.")
+      let site = { content_dir = content_dir, output_dir = output_dir,
+                   static_dir = "/tmp/no_static", title = "", base_url = "" }
+      let _ = Build.run(site)
+      let html = match File.read(Path.join(output_dir, "undated.html")) do
+                 Ok(s) -> s | Err(_) -> "" end
+      -- The post header and title are present, but there is no <time> element.
+      assert (String.contains(html, "<h1 class=\"post-title\">Undated Post</h1>"))
+      assert (not (String.contains(html, "<time")))
+      let _ = Dir.rm_rf(tmp)
+    end
+
     test "unknown layout name falls back to default wrapper" do
       let tmp         = "/tmp/sigil_layout_unknown_" ++ to_string(System.monotonic_time())
       let content_dir = Path.join(tmp, "content")
