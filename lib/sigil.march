@@ -24,8 +24,12 @@ mod Ssg do
       match SiteConfig.load(SiteConfig.default_path(), def_content, def_output, def_static, def_title, def_base) do
       Err(msg) -> Err(msg)
       Ok(seed) ->
-        parse_flags(flags, Config.site_content_dir(seed), Config.site_output_dir(seed),
-                    Config.site_static_dir(seed), Config.site_title(seed), Config.site_base_url(seed))
+        let s_content = Config.site_content_dir(seed)
+        let s_output  = Config.site_output_dir(seed)
+        let s_static  = Config.site_static_dir(seed)
+        let s_title   = Config.site_title(seed)
+        let s_base    = Config.site_base_url(seed)
+        parse_flags(flags, s_content, s_output, s_static, s_title, s_base)
       end
     Cons(cmd, _) ->
       Err("unknown subcommand: " ++ cmd)
@@ -89,8 +93,12 @@ mod Ssg do
       Err(msg) ->
         println(msg)
       Ok(seed) ->
-        match parse_flags(flags, Config.site_content_dir(seed), Config.site_output_dir(seed),
-                          Config.site_static_dir(seed), Config.site_title(seed), Config.site_base_url(seed)) do
+        let s_content = Config.site_content_dir(seed)
+        let s_output  = Config.site_output_dir(seed)
+        let s_static  = Config.site_static_dir(seed)
+        let s_title   = Config.site_title(seed)
+        let s_base    = Config.site_base_url(seed)
+        match parse_flags(flags, s_content, s_output, s_static, s_title, s_base) do
         Err(msg) ->
           println(msg)
         Ok(site) ->

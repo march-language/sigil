@@ -51,7 +51,7 @@ mod SiteConfig do
   -- Scan the config line by line, tracking the current [section] and threading the
   -- five target fields as plain String parameters.  No TomlValue, no constructor
   -- binding beyond plain tuples — RC-safe under compilation.
-  pfn scan(lines, section : String,
+  pfn scan(lines : List(String), section : String,
            content_dir : String, output_dir : String, static_dir : String,
            title : String, base_url : String) : Config.Site do
     match lines do
