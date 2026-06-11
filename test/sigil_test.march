@@ -651,4 +651,72 @@ mod TestSigil do
     end
   end
 
+  describe "Scaffold.create" do
+    test "creates content, static, sigil.toml, README" do
+      let tmp = "/tmp/sigil_scaffold_" ++ to_string(System.monotonic_time())
+      let result = Scaffold.create(tmp)
+      assert (match result do Ok(_) -> true | Err(_) -> false end)
+      let post_exists = match File.read(Path.join(Path.join(tmp, "content"), "hello-world.md")) do
+                        Ok(_) -> true | Err(_) -> false end
+      let css_exists  = match File.read(Path.join(Path.join(tmp, "static"), "style.css")) do
+                        Ok(_) -> true | Err(_) -> false end
+      let toml_exists = match File.read(Path.join(tmp, "sigil.toml")) do
+                        Ok(_) -> true | Err(_) -> false end
+      let readme_exists = match File.read(Path.join(tmp, "README.md")) do
+                          Ok(_) -> true | Err(_) -> false end
+      assert post_exists
+      assert css_exists
+      assert toml_exists
+      assert readme_exists
+      let _ = Dir.rm_rf(tmp)
+    end
+
+    test "sample post contains valid front-matter" do
+      let tmp = "/tmp/sigil_scaffold_fm_" ++ to_string(System.monotonic_time())
+      let _ = Scaffold.create(tmp)
+      let post = match File.read(Path.join(Path.join(tmp, "content"), "hello-world.md")) do
+                 Ok(s) -> s | Err(_) -> "" end
+      assert (String.contains(post, "---"))
+      assert (String.contains(post, "title: Hello World"))
+      assert (String.contains(post, "layout: default"))
+      assert (String.contains(post, "tags: [hello, sigil]"))
+      assert (String.contains(post, "draft: false"))
+      let _ = Dir.rm_rf(tmp)
+    end
+
+    test "sigil.toml has site and build sections" do
+      let tmp = "/tmp/sigil_scaffold_toml_" ++ to_string(System.monotonic_time())
+      let _ = Scaffold.create(tmp)
+      let toml = match File.read(Path.join(tmp, "sigil.toml")) do
+                 Ok(s) -> s | Err(_) -> "" end
+      assert (String.contains(toml, "[site]"))
+      assert (String.contains(toml, "[build]"))
+      assert (String.contains(toml, "content_dir"))
+      let _ = Dir.rm_rf(tmp)
+    end
+
+    test "refuses when target dir already exists" do
+      let tmp = "/tmp/sigil_scaffold_exists_" ++ to_string(System.monotonic_time())
+      let _ = Dir.mkdir_p(tmp)
+      let result = Scaffold.create(tmp)
+      assert (match result do Ok(_) -> false | Err(_) -> true end)
+      let _ = Dir.rm_rf(tmp)
+    end
+
+    test "scaffolded post drives a working build" do
+      let tmp = "/tmp/sigil_scaffold_build_" ++ to_string(System.monotonic_time())
+      let _ = Scaffold.create(tmp)
+      let site = { content_dir = Path.join(tmp, "content"),
+                   output_dir = Path.join(tmp, "out"),
+                   static_dir = Path.join(tmp, "static"),
+                   title = "My Site", base_url = "" }
+      let result = Build.run(site)
+      assert (match result do Ok(_) -> true | Err(_) -> false end)
+      let html_exists = match File.read(Path.join(Path.join(tmp, "out"), "hello-world.html")) do
+                        Ok(_) -> true | Err(_) -> false end
+      assert html_exists
+      let _ = Dir.rm_rf(tmp)
+    end
+  end
+
 end
