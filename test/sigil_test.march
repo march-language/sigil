@@ -479,7 +479,7 @@ mod TestSigil do
 
     test "entry_tags returns full list" do
       let m   = Page.decode("content/a.md", "tags: [ssg, march]\n")
-      let idx = SiteIndex.add(SiteIndex.empty(), "a", m)
+      let idx = SiteIndex.add(SiteIndex.empty(), "a", "", m)
       let es  = SiteIndex.entries(idx)
       let ts  = match es do Cons(e, _) -> SiteIndex.entry_tags(e) | Nil -> Nil end
       assert (List.length(ts) == 2)
@@ -488,7 +488,7 @@ mod TestSigil do
     test "flat_map entry_tags gives all tags" do
       let m1  = Page.decode("content/a.md", "tags: [ssg, march]\n")
       let m2  = Page.decode("content/b.md", "tags: [march, tutorial]\n")
-      let idx = SiteIndex.add(SiteIndex.add(SiteIndex.empty(), "a", m1), "b", m2)
+      let idx = SiteIndex.add(SiteIndex.add(SiteIndex.empty(), "a", "", m1), "b", "", m2)
       let es  = SiteIndex.entries(idx)
       let all = List.flat_map(es, fn e -> SiteIndex.entry_tags(e))
       assert (List.length(all) == 4)
@@ -505,7 +505,7 @@ mod TestSigil do
     test "add and entries roundtrip" do
       let idx   = SiteIndex.empty()
       let meta  = Page.decode("content/post.md", "title: Hello\ndate: 2025-01-01\ntags: [march]\n")
-      let idx2  = SiteIndex.add(idx, "post", meta)
+      let idx2  = SiteIndex.add(idx, "post", "", meta)
       let es    = SiteIndex.entries(idx2)
       assert (match es do Cons(e, Nil) -> SiteIndex.entry_slug(e) == "post" | _ -> false end)
     end
@@ -514,7 +514,7 @@ mod TestSigil do
       let idx  = SiteIndex.empty()
       let m1   = Page.decode("content/a.md", "tags: [ssg, march]\n")
       let m2   = Page.decode("content/b.md", "tags: [march, tutorial]\n")
-      let idx2 = SiteIndex.add(SiteIndex.add(idx, "a", m1), "b", m2)
+      let idx2 = SiteIndex.add(SiteIndex.add(idx, "a", "", m1), "b", "", m2)
       let tags = SiteIndex.all_tags(idx2)
       assert (List.length(tags) == 3)
       assert (List.member(tags, "march"))
@@ -526,7 +526,7 @@ mod TestSigil do
       let idx  = SiteIndex.empty()
       let m1   = Page.decode("content/a.md", "tags: [march]\n")
       let m2   = Page.decode("content/b.md", "tags: [ssg]\n")
-      let idx2 = SiteIndex.add(SiteIndex.add(idx, "a", m1), "b", m2)
+      let idx2 = SiteIndex.add(SiteIndex.add(idx, "a", "", m1), "b", "", m2)
       let tagged = SiteIndex.by_tag(idx2, "march")
       assert (List.length(tagged) == 1)
       assert (match tagged do Cons(e, _) -> SiteIndex.entry_slug(e) == "a" | Nil -> false end)
@@ -536,7 +536,7 @@ mod TestSigil do
       let idx = SiteIndex.empty()
       let m1  = Page.decode("content/old.md", "title: Old\ndate: 2025-01-01\n")
       let m2  = Page.decode("content/new.md", "title: New\ndate: 2025-06-01\n")
-      let idx2 = SiteIndex.add(SiteIndex.add(idx, "old", m1), "new", m2)
+      let idx2 = SiteIndex.add(SiteIndex.add(idx, "old", "", m1), "new", "", m2)
       let sorted = SiteIndex.sorted_by_date(idx2)
       assert (match sorted do
               Cons(e, _) -> SiteIndex.entry_slug(e) == "new"
@@ -578,6 +578,28 @@ mod TestSigil do
       assert (String.contains(xml, "<rss"))
       assert (String.contains(xml, "Blog Title"))
       assert (String.contains(xml, "My Post"))
+      let _ = Dir.rm_rf(tmp)
+    end
+
+    test "Build.run feed.xml includes post content as CDATA description" do
+      let tmp         = "/tmp/sigil_m4_feeddesc_" ++ to_string(System.monotonic_time())
+      let content_dir = Path.join(tmp, "content")
+      let output_dir  = Path.join(tmp, "out")
+      let _ = Dir.mkdir_p(content_dir)
+      let _ = File.write(Path.join(content_dir, "post.md"),
+                         "---\ntitle: My Post\ndate: 2025-02-01\n---\n# My Post\n\nThis is the very first paragraph of the body.\n")
+      let site = { content_dir = content_dir, output_dir = output_dir,
+                   static_dir = "/tmp/no_static", title = "Blog Title", base_url = "https://example.com" }
+      let _ = Build.run(site)
+      let xml = match File.read(Path.join(output_dir, "feed.xml")) do
+                Ok(s) -> s | Err(_) -> "" end
+      -- channel-level description
+      assert (String.contains(xml, "Recent posts from Blog Title"))
+      -- item-level description wrapped in CDATA with the first paragraph text
+      assert (String.contains(xml, "<description"))
+      assert (String.contains(xml, "<![CDATA["))
+      assert (String.contains(xml, "]]>"))
+      assert (String.contains(xml, "This is the very first paragraph of the body."))
       let _ = Dir.rm_rf(tmp)
     end
 

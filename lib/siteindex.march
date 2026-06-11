@@ -9,10 +9,11 @@ mod SiteIndex do
   -- the same variable.  A record type avoids this: field projection borrows the
   -- enclosing record, leaving it live for subsequent accesses.
   type Entry = {
-    slug  : String,
-    title : String,
-    date  : String,
-    tags  : List(String)
+    slug    : String,
+    title   : String,
+    date    : String,
+    tags    : List(String),
+    excerpt : String
   }
 
   -- The site index is a wrapper around a list of entries.
@@ -28,11 +29,11 @@ mod SiteIndex do
 
   -- Add a page to the index.  Entries are stored in insertion order; call
   -- sorted_by_date() when you need chronological ordering.
-  fn add(idx, slug : String, meta) do
+  fn add(idx, slug : String, excerpt : String, meta) do
     let title = Page.meta_title(meta)
     let date  = Page.meta_date(meta)
     let tags  = Page.meta_tags(meta)
-    prepend(idx, { slug = slug, title = title, date = date, tags = tags })
+    prepend(idx, { slug = slug, title = title, date = date, tags = tags, excerpt = excerpt })
   end
 
   -- Return entries in the order they were added.
@@ -74,13 +75,14 @@ mod SiteIndex do
   end
 
   pfn dup_entry(e : Entry) : Entry do
-    { slug  = "" ++ entry_slug(e),
-      title = "" ++ entry_title(e),
-      date  = "" ++ entry_date(e),
-      tags  = List.filter_map(entry_tags(e), fn t -> do
-                let c = "" ++ t
-                Some(c)
-              end) }
+    { slug    = "" ++ entry_slug(e),
+      title   = "" ++ entry_title(e),
+      date    = "" ++ entry_date(e),
+      tags    = List.filter_map(entry_tags(e), fn t -> do
+                  let c = "" ++ t
+                  Some(c)
+                end),
+      excerpt = "" ++ entry_excerpt(e) }
   end
 
   -- Return entries sorted by date descending (newest first).
@@ -146,5 +148,7 @@ mod SiteIndex do
   fn entry_date(e : Entry) : String do e.date end
 
   fn entry_tags(e : Entry) do e.tags end
+
+  fn entry_excerpt(e : Entry) : String do "" ++ e.excerpt end
 
 end

@@ -145,16 +145,22 @@ mod Build do
     match File.read(src) do
     Err(_) -> idx
     Ok(content) -> do
-      let meta_str = front_matter_yaml(content)
-      let meta = on_meta(meta_str)
-      -- RC note: meta is consumed by Page.meta_draft before the match arm that uses
-      -- SiteIndex.add.  Capture the add continuation before the draft check so both
-      -- uses of meta are visible at the same scope level.
-      let add_fn = fn _ -> SiteIndex.add(idx, slug, meta)
-      let is_draft = Page.meta_draft(meta)
-      match is_draft do
-      true -> idx
-      false -> add_fn(())
+      -- FrontMatter.split(content:own) consumes content once, yielding both the
+      -- YAML for metadata and the body for the excerpt.
+      match FrontMatter.split(content) do
+      (meta_str, body) -> do
+        let meta = on_meta(meta_str)
+        let excerpt = excerpt_of(body)
+        -- RC note: meta is consumed by Page.meta_draft before the match arm that uses
+        -- SiteIndex.add.  Capture the add continuation before the draft check so both
+        -- uses of meta are visible at the same scope level.
+        let add_fn = fn _ -> SiteIndex.add(idx, slug, excerpt, meta)
+        let is_draft = Page.meta_draft(meta)
+        match is_draft do
+        true -> idx
+        false -> add_fn(())
+        end
+      end
       end
     end
     end
@@ -403,10 +409,11 @@ mod Build do
     -- same base_url value is used for both feed_items and Html.escape(ch_link)
     -- without aliasing it through a let-binding (which would move ownership).
     let ch_title = if String.is_empty(site_title) do "My Site" else site_title end
+    let ch_desc  = "Recent posts from " ++ ch_title
     let items = feed_items(base_url, entries)
     """<?xml version="1.0" encoding="UTF-8"?>
 """ ++ """<rss version="2.0">
-""" ++ "<channel>\n" ++ "  <title>" ++ Html.escape(ch_title) ++ "</title>\n" ++ "  <link>" ++ Html.escape(base_url) ++ "</link>\n" ++ items ++ """</channel>
+""" ++ "<channel>\n" ++ "  <title>" ++ Html.escape(ch_title) ++ "</title>\n" ++ "  <link>" ++ Html.escape(base_url) ++ "</link>\n" ++ "  <description>" ++ Html.escape(ch_desc) ++ "</description>\n" ++ items ++ """</channel>
 """ ++ "</rss>\n"
   end
 
@@ -414,9 +421,13 @@ mod Build do
     match entries do
     Nil -> ""
     Cons(e, rest) -> do
+      -- RC note: all four accessors borrow e; bind them at the same let-level
+      -- before any other expression consumes them so Perceus sees every borrow
+      -- site simultaneously and keeps e live across them.
       let slug = SiteIndex.entry_slug(e)
       let title = SiteIndex.entry_title(e)
       let date = SiteIndex.entry_date(e)
+      let excerpt = SiteIndex.entry_excerpt(e)
       let link = base_url ++ "/" ++ slug ++ ".html"
       let pubdate =
         if String.is_empty(date) do
@@ -425,9 +436,59 @@ mod Build do
           "    <pubDate>" ++ date ++ """</pubDate>
 """
         end
+      let description =
+        if String.is_empty(excerpt) do
+          ""
+        else
+          "    <description><![CDATA[" ++ excerpt ++ """]]></description>
+"""
+        end
       let item =
-        "  <item>\n" ++ "    <title>" ++ Html.escape(title) ++ "</title>\n" ++ "    <link>" ++ Html.escape(link) ++ "</link>\n" ++ pubdate ++ "  </item>\n"
+        "  <item>\n" ++ "    <title>" ++ Html.escape(title) ++ "</title>\n" ++ "    <link>" ++ Html.escape(link) ++ "</link>\n" ++ pubdate ++ description ++ "  </item>\n"
       item ++ feed_items(base_url, rest)
+    end
+    end
+  end
+
+  -- ─── Excerpt helpers ─────────────────────────────────────────────────────────
+  -- Compute a plain-text excerpt from a markdown body: parse to blocks, take the
+  -- text of the first paragraph (falling back to the first heading, then to the
+  -- raw body), trim it, cap it at ~200 bytes, and neutralise any literal "]]>"
+  -- so the result is safe to embed inside an RSS <![CDATA[ ... ]]> section.
+  pfn excerpt_of(body : String) : String do
+    let blocks = MdBlock.parse(body)
+    let para   = first_paragraph_text(blocks)
+    let raw =
+      match para do
+      Some(t) -> t
+      None    -> body
+      end
+    cdata_safe(truncate_excerpt(String.trim(raw)))
+  end
+
+  -- Cap a string at 200 bytes (no word-boundary handling — kept simple/robust).
+  pfn truncate_excerpt(s : String) : String do
+    if String.byte_size(s) > 200 do
+      String.slice_bytes(s, 0, 200) ++ "…"
+    else
+      s
+    end
+  end
+
+  -- Replace any literal "]]>" so the excerpt cannot terminate a CDATA section.
+  pfn cdata_safe(s : String) : String do
+    String.replace_all(s, "]]>", "]] >")
+  end
+
+  -- Extract the text of the first Para block from a list of parsed blocks.
+  pfn first_paragraph_text(blocks : List(Block)) : Option(String) do
+    match blocks do
+    Nil -> None
+    Cons(block, rest) -> do
+      match block do
+      Para(inlines) -> Some(inlines_to_text(inlines))
+      _ -> first_paragraph_text(rest)
+      end
     end
     end
   end
