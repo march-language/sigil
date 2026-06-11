@@ -1,0 +1,154 @@
+mod Scaffold do
+
+  pfn fmt_err(e) : String do
+    to_string(e)
+  end
+
+  -- Sample markdown post with valid front-matter (title/date/layout/tags/draft)
+  -- and a small markdown body (heading, paragraph, list).
+  pfn hello_world_md() : String do
+    "---\n"
+    ++ "title: Hello World\n"
+    ++ "date: 2026-06-10\n"
+    ++ "layout: default\n"
+    ++ "tags: [hello, sigil]\n"
+    ++ "draft: false\n"
+    ++ "---\n"
+    ++ "\n"
+    ++ "# Hello, world!\n"
+    ++ "\n"
+    ++ "Welcome to your brand new site, generated with Sigil.\n"
+    ++ "\n"
+    ++ "Here are a few things you can do next:\n"
+    ++ "\n"
+    ++ "- Edit this post in `content/hello-world.md`\n"
+    ++ "- Tweak the styles in `static/style.css`\n"
+    ++ "- Run `sigil build` to regenerate the site\n"
+  end
+
+  -- A minimal sample stylesheet.
+  pfn style_css() : String do
+    "body {\n"
+    ++ "  font-family: system-ui, -apple-system, sans-serif;\n"
+    ++ "  max-width: 40rem;\n"
+    ++ "  margin: 2rem auto;\n"
+    ++ "  padding: 0 1rem;\n"
+    ++ "  line-height: 1.6;\n"
+    ++ "  color: #222;\n"
+    ++ "}\n"
+    ++ "\n"
+    ++ "a {\n"
+    ++ "  color: #06c;\n"
+    ++ "}\n"
+    ++ "\n"
+    ++ "code {\n"
+    ++ "  background: #f4f4f4;\n"
+    ++ "  padding: 0.1rem 0.3rem;\n"
+    ++ "  border-radius: 3px;\n"
+    ++ "}\n"
+  end
+
+  -- A starter config file. (Reading of sigil.toml lives on another branch;
+  -- here we only need to write a sensible starter.)
+  pfn sigil_toml() : String do
+    "[site]\n"
+    ++ "title = \"My Site\"\n"
+    ++ "base_url = \"\"\n"
+    ++ "\n"
+    ++ "[build]\n"
+    ++ "content_dir = \"content\"\n"
+    ++ "output_dir = \"out\"\n"
+    ++ "static_dir = \"static\"\n"
+  end
+
+  pfn readme_md() : String do
+    "# My Sigil Site\n"
+    ++ "\n"
+    ++ "A starter site scaffolded by `sigil new`.\n"
+    ++ "\n"
+    ++ "## Quick start\n"
+    ++ "\n"
+    ++ "Build the site:\n"
+    ++ "\n"
+    ++ "    sigil build --content-dir content --output-dir out --static-dir static\n"
+    ++ "\n"
+    ++ "Then open `out/hello-world.html` in your browser.\n"
+    ++ "\n"
+    ++ "## Layout\n"
+    ++ "\n"
+    ++ "- `content/` — your markdown posts\n"
+    ++ "- `static/`  — assets copied verbatim to the output\n"
+    ++ "- `sigil.toml` — site configuration\n"
+  end
+
+  -- Write a single file, mapping any I/O error to a friendly message.
+  pfn write_file(path : String, contents : String) : Result(Unit, String) do
+    match File.write(path, contents) do
+    Err(e) -> Err("cannot write " ++ path ++ ": " ++ fmt_err(e))
+    Ok(_)  -> Ok(())
+    end
+  end
+
+  -- Create a directory (with parents), mapping errors to a friendly message.
+  pfn make_dir(path : String) : Result(Unit, String) do
+    match Dir.mkdir_p(path) do
+    Err(e) -> Err("cannot create directory " ++ path ++ ": " ++ fmt_err(e))
+    Ok(_)  -> Ok(())
+    end
+  end
+
+  -- Scaffold a starter site into `dir`.
+  -- Refuses if `dir` already exists (safest: avoids clobbering user files).
+  -- On success returns Ok(()); the caller prints next-step instructions.
+  fn create(dir : String) : Result(Unit, String) do
+    if Dir.exists(dir) do
+      Err("target directory already exists: " ++ dir ++ " (refusing to overwrite)")
+    else
+      create_files(dir)
+    end
+  end
+
+  pfn create_files(dir : String) : Result(Unit, String) do
+    let content_dir = Path.join(dir, "content")
+    let static_dir  = Path.join(dir, "static")
+    match make_dir(dir) do
+    Err(m) -> Err(m)
+    Ok(_) ->
+      match make_dir(content_dir) do
+      Err(m) -> Err(m)
+      Ok(_) ->
+        match make_dir(static_dir) do
+        Err(m) -> Err(m)
+        Ok(_) ->
+          write_payload(dir, content_dir, static_dir)
+        end
+      end
+    end
+  end
+
+  pfn write_payload(dir : String, content_dir : String, static_dir : String) : Result(Unit, String) do
+    match write_file(Path.join(content_dir, "hello-world.md"), hello_world_md()) do
+    Err(m) -> Err(m)
+    Ok(_) ->
+      match write_file(Path.join(static_dir, "style.css"), style_css()) do
+      Err(m) -> Err(m)
+      Ok(_) ->
+        match write_file(Path.join(dir, "sigil.toml"), sigil_toml()) do
+        Err(m) -> Err(m)
+        Ok(_) ->
+          write_file(Path.join(dir, "README.md"), readme_md())
+        end
+      end
+    end
+  end
+
+  -- Friendly next-step message printed after a successful scaffold.
+  fn next_steps(dir : String) : String do
+    "Created a new Sigil site in " ++ dir ++ "\n"
+    ++ "\n"
+    ++ "Next steps:\n"
+    ++ "  cd " ++ dir ++ "\n"
+    ++ "  sigil build --content-dir content --output-dir out --static-dir static\n"
+  end
+
+end

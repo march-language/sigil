@@ -18,7 +18,7 @@ mod Ssg do
     let def_base     = defaults.base_url
     match args do
     Nil ->
-      Err("usage: sigil <build|serve> [--content-dir DIR] [--output-dir DIR] [--static-dir DIR] [--title TITLE] [--base-url URL]")
+      Err("usage: sigil <new DIR|build|serve> [--content-dir DIR] [--output-dir DIR] [--static-dir DIR] [--title TITLE] [--base-url URL]")
     Cons("build", flags) ->
       parse_flags(flags, def_content, def_output, def_static, def_title, def_base)
     Cons(cmd, _) ->
@@ -70,6 +70,15 @@ mod Ssg do
     -- System.argv() called in each branch separately to avoid RC issues.
     let args = drop_paths(System.argv())
     match args do
+    Cons("new", Cons(dir, _)) ->
+      match Scaffold.create(dir) do
+      Err(msg) ->
+        println("error: " ++ msg)
+      Ok(_) ->
+        println(Scaffold.next_steps(dir))
+      end
+    Cons("new", Nil) ->
+      println("usage: sigil new DIR")
     Cons("serve", flags) ->
       let d = Config.default()
       let d_content = d.content_dir
