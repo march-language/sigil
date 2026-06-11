@@ -545,6 +545,107 @@ mod TestSigil do
     end
   end
 
+  describe "SiteConfig" do
+    -- (a) sigil.toml values are picked up over the built-in defaults.
+    test "load picks up values from sigil.toml" do
+      let tmp = "/tmp/sigil_cfg_" ++ to_string(System.monotonic_time())
+      let _   = Dir.mkdir_p(tmp)
+      let cfg = Path.join(tmp, "sigil.toml")
+      let _   = File.write(cfg,
+        "[site]\ntitle = \"Toml Site\"\nbase_url = \"https://toml.example\"\n[build]\ncontent_dir = \"src\"\noutput_dir = \"dist\"\nstatic_dir = \"assets\"\n")
+      let result = SiteConfig.load(cfg, "content", "out", "static", "My Site", "")
+      -- Extract each field with its own accessor call on a freshly destructured
+      -- record to avoid Perceus multi-use underflow on a cross-module record.
+      let title   = match result do Ok(s) -> Config.site_title(s)       | Err(_) -> "" end
+      let result2 = SiteConfig.load(cfg, "content", "out", "static", "My Site", "")
+      let base    = match result2 do Ok(s) -> Config.site_base_url(s)    | Err(_) -> "" end
+      let result3 = SiteConfig.load(cfg, "content", "out", "static", "My Site", "")
+      let cdir    = match result3 do Ok(s) -> Config.site_content_dir(s) | Err(_) -> "" end
+      let result4 = SiteConfig.load(cfg, "content", "out", "static", "My Site", "")
+      let odir    = match result4 do Ok(s) -> Config.site_output_dir(s)  | Err(_) -> "" end
+      let result5 = SiteConfig.load(cfg, "content", "out", "static", "My Site", "")
+      let sdir    = match result5 do Ok(s) -> Config.site_static_dir(s)  | Err(_) -> "" end
+      assert (title == "Toml Site")
+      assert (base == "https://toml.example")
+      assert (cdir == "src")
+      assert (odir == "dist")
+      assert (sdir == "assets")
+      let _ = Dir.rm_rf(tmp)
+    end
+
+    -- Keys absent from sigil.toml fall back to the supplied defaults.
+    test "load falls back to defaults for missing keys" do
+      let tmp = "/tmp/sigil_cfg_partial_" ++ to_string(System.monotonic_time())
+      let _   = Dir.mkdir_p(tmp)
+      let cfg = Path.join(tmp, "sigil.toml")
+      let _   = File.write(cfg, "[site]\ntitle = \"Only Title\"\n")
+      let result = SiteConfig.load(cfg, "content", "out", "static", "Default Title", "")
+      assert (match result do
+              Ok(s) ->
+                Config.site_title(s) == "Only Title" &&
+                Config.site_content_dir(s) == "content" &&
+                Config.site_output_dir(s) == "out"
+              Err(_) -> false
+              end)
+      let _ = Dir.rm_rf(tmp)
+    end
+
+    -- (b) a CLI flag overrides a value coming from the config file.
+    test "CLI flag overrides config file value" do
+      let tmp = "/tmp/sigil_cfg_override_" ++ to_string(System.monotonic_time())
+      let _   = Dir.mkdir_p(tmp)
+      let cfg = Path.join(tmp, "sigil.toml")
+      let _   = File.write(cfg, "[build]\ncontent_dir = \"from_toml\"\noutput_dir = \"out_toml\"\n")
+      -- Seed defaults from the config file, exactly as Ssg.parse_args does.
+      let seeded = SiteConfig.load(cfg, "content", "out", "static", "My Site", "")
+      let result = match seeded do
+        Ok(seed) ->
+          -- Then apply CLI flags on top; --content-dir should win over the toml value.
+          Ssg.parse_flags(Cons("--content-dir", Cons("from_flag", Nil)),
+                          Config.site_content_dir(seed), Config.site_output_dir(seed),
+                          Config.site_static_dir(seed), Config.site_title(seed), Config.site_base_url(seed))
+        Err(m) -> Err(m)
+      end
+      assert (match result do
+              Ok(s) ->
+                -- flag wins for content_dir, toml still wins for output_dir (no flag given)
+                Config.site_content_dir(s) == "from_flag" &&
+                Config.site_output_dir(s) == "out_toml"
+              Err(_) -> false
+              end)
+      let _ = Dir.rm_rf(tmp)
+    end
+
+    -- (c) a missing config file silently falls back to the supplied defaults.
+    test "load falls back to defaults when file is missing" do
+      let missing = "/tmp/sigil_cfg_nope_" ++ to_string(System.monotonic_time()) ++ "/sigil.toml"
+      let result = SiteConfig.load(missing, "content", "out", "static", "My Site", "")
+      assert (match result do
+              Ok(s) ->
+                Config.site_content_dir(s) == "content" &&
+                Config.site_output_dir(s) == "out" &&
+                Config.site_title(s) == "My Site"
+              Err(_) -> false
+              end)
+    end
+
+    -- The line parser is lenient by design (the stdlib Toml backend was dropped to
+    -- dodge a native miscompilation — see SiteConfig): unparseable / partial lines
+    -- are skipped rather than failing the whole load, and valid keys still parse.
+    test "load tolerates malformed lines and still parses valid keys" do
+      let tmp = "/tmp/sigil_cfg_bad_" ++ to_string(System.monotonic_time())
+      let _   = Dir.mkdir_p(tmp)
+      let cfg = Path.join(tmp, "sigil.toml")
+      let _   = File.write(cfg, "this is not toml\n[site]\ntitle = \"Recovered\"\n= orphan\n")
+      let result = SiteConfig.load(cfg, "content", "out", "static", "Default", "")
+      assert (match result do
+              Err(_)   -> false
+              Ok(site) -> String.contains(Config.site_title(site), "Recovered")
+              end)
+      let _ = Dir.rm_rf(tmp)
+    end
+  end
+
   describe "M4 Build collections" do
     test "Build.run generates sitemap.xml" do
       let tmp         = "/tmp/sigil_m4_sitemap_" ++ to_string(System.monotonic_time())

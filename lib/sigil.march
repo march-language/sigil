@@ -20,7 +20,13 @@ mod Ssg do
     Nil ->
       Err("usage: sigil <build|serve> [--content-dir DIR] [--output-dir DIR] [--static-dir DIR] [--title TITLE] [--base-url URL]")
     Cons("build", flags) ->
-      parse_flags(flags, def_content, def_output, def_static, def_title, def_base)
+      -- Seed defaults from sigil.toml (if present), then let CLI flags override.
+      match SiteConfig.load(SiteConfig.default_path(), def_content, def_output, def_static, def_title, def_base) do
+      Err(msg) -> Err(msg)
+      Ok(seed) ->
+        parse_flags(flags, Config.site_content_dir(seed), Config.site_output_dir(seed),
+                    Config.site_static_dir(seed), Config.site_title(seed), Config.site_base_url(seed))
+      end
     Cons(cmd, _) ->
       Err("unknown subcommand: " ++ cmd)
     end
@@ -45,7 +51,8 @@ mod Ssg do
     end
   end
 
-  pfn parse_flags(args : List(String), content_dir : String, output_dir : String, static_dir : String, title : String, base_url : String) : Result(Config.Site, String) do
+  -- Public so tests can exercise the seed-then-override path directly.
+  fn parse_flags(args : List(String), content_dir : String, output_dir : String, static_dir : String, title : String, base_url : String) : Result(Config.Site, String) do
     match args do
     Nil ->
       Ok({ content_dir = content_dir, output_dir = output_dir, static_dir = static_dir,
@@ -77,11 +84,18 @@ mod Ssg do
       let d_static  = d.static_dir
       let d_title   = d.title
       let d_base    = d.base_url
-      match parse_flags(flags, d_content, d_output, d_static, d_title, d_base) do
+      -- Seed defaults from sigil.toml (if present), then let CLI flags override.
+      match SiteConfig.load(SiteConfig.default_path(), d_content, d_output, d_static, d_title, d_base) do
       Err(msg) ->
         println(msg)
-      Ok(site) ->
-        Serve.run(site, 4000)
+      Ok(seed) ->
+        match parse_flags(flags, Config.site_content_dir(seed), Config.site_output_dir(seed),
+                          Config.site_static_dir(seed), Config.site_title(seed), Config.site_base_url(seed)) do
+        Err(msg) ->
+          println(msg)
+        Ok(site) ->
+          Serve.run(site, 4000)
+        end
       end
     _ ->
       match parse_args(System.argv()) do

@@ -1,0 +1,135 @@
+-- Loads optional `sigil.toml` project config and merges it over the built-in
+-- defaults.  Precedence (low -> high): defaults < sigil.toml < CLI flags.
+-- This module only seeds the defaults from the config file; CLI flag overriding
+-- happens afterwards in Ssg.parse_flags.
+--
+-- Schema (flat `[section]` tables, double-quoted string values):
+--   [site]
+--   title    = "My Site"
+--   base_url = "https://example.com"
+--   [build]
+--   content_dir = "content"
+--   output_dir  = "out"
+--   static_dir  = "static"
+--
+-- Missing/unreadable file -> silently returns the unchanged defaults.
+--
+-- IMPLEMENTATION NOTE: this is a deliberately small line-based parser rather than
+-- the stdlib `Toml` module.  Toml.parse produces a nested `TomlValue` whose
+-- compiled (Perceus) manipulation is currently miscompiled — every shape we tried
+-- failed natively: reading the value with `Toml.get_in` more than once aborts with
+-- an RC underflow (each getter consumes the value), a single hand-walk that binds
+-- `TTable(inner)`/`TStr(val)` comes back empty, and threading a multi-field
+-- accumulator drops trailing fields.  A flat line scan that only threads Strings
+-- and binds plain tuples (the same shape as Page.decode / FrontMatter.split, which
+-- compile correctly) sidesteps all of those compiler bugs.
+
+mod SiteConfig do
+
+  -- Default config file name, looked up relative to the current working dir.
+  fn default_path() : String do "sigil.toml" end
+
+  -- Load `path` (e.g. "sigil.toml") and produce a Site seeded from it.
+  -- A missing or unreadable file yields the unchanged defaults.
+  fn load(path : String, def_content : String, def_output : String,
+          def_static : String, def_title : String, def_base : String) : Result(Config.Site, String) do
+    if File.exists(path) do
+      match File.read(path) do
+      Err(_) ->
+        Ok({ content_dir = def_content, output_dir = def_output, static_dir = def_static,
+             title = def_title, base_url = def_base })
+      Ok(src) ->
+        let lines = String.split(src, "\n")
+        Ok(scan(lines, "", def_content, def_output, def_static, def_title, def_base))
+      end
+    else
+      Ok({ content_dir = def_content, output_dir = def_output, static_dir = def_static,
+           title = def_title, base_url = def_base })
+    end
+  end
+
+  -- Scan the config line by line, tracking the current [section] and threading the
+  -- five target fields as plain String parameters.  No TomlValue, no constructor
+  -- binding beyond plain tuples — RC-safe under compilation.
+  pfn scan(lines, section : String,
+           content_dir : String, output_dir : String, static_dir : String,
+           title : String, base_url : String) : Config.Site do
+    match lines do
+    Nil ->
+      { content_dir = content_dir, output_dir = output_dir, static_dir = static_dir,
+        title = title, base_url = base_url }
+    Cons(line, rest) -> do
+      let t = String.trim(line)
+      if is_header(t) do
+        scan(rest, header_name(t), content_dir, output_dir, static_dir, title, base_url)
+      else
+        match parse_kv(t) do
+        None ->
+          scan(rest, section, content_dir, output_dir, static_dir, title, base_url)
+        Some(kv) ->
+          match kv do
+          (k, v) ->
+            match assign(section, k, v, content_dir, output_dir, static_dir, title, base_url) do
+            (c, o, s, ti, b) -> scan(rest, section, c, o, s, ti, b)
+            end
+          end
+        end
+      end
+    end
+    end
+  end
+
+  -- A "[section]" header line.
+  pfn is_header(t : String) : Bool do
+    String.starts_with(t, "[") && String.ends_with(t, "]")
+  end
+
+  -- Strip the surrounding brackets from a "[section]" header.
+  pfn header_name(t : String) : String do
+    String.slice_bytes(t, 1, String.byte_size(t) - 2)
+  end
+
+  -- Parse a `key = "value"` line into Some((key, unquoted_value)), or None for a
+  -- blank line, a comment, or a line without `=`.
+  pfn parse_kv(t : String) : Option((String, String)) do
+    if String.is_empty(t) do None
+    else if String.starts_with(t, "#") do None
+    else
+      match String.split_first(t, "=") do
+      None -> None
+      Some(pair) ->
+        match pair do
+        (k, v) -> Some((String.trim(k), unquote(String.trim(v))))
+        end
+      end
+    end
+    end
+  end
+
+  -- Strip a single pair of surrounding double quotes, if present.
+  pfn unquote(s : String) : String do
+    let n = String.byte_size(s)
+    if n >= 2 && String.starts_with(s, "\"") && String.ends_with(s, "\"") do
+      String.slice_bytes(s, 1, n - 2)
+    else
+      s
+    end
+  end
+
+  -- Replace whichever field the "section"+"key" names (or leave all unchanged for
+  -- an unrecognised pair).  Uses string-equality on the fully-qualified key — no
+  -- tuple-pattern matching — which the native backend handles reliably.
+  pfn assign(section : String, key : String, val : String,
+             content_dir : String, output_dir : String, static_dir : String,
+             title : String, base_url : String) do
+    let fq = section ++ "." ++ key
+    if fq == "build.content_dir" do (val, output_dir, static_dir, title, base_url)
+    else if fq == "build.output_dir" do (content_dir, val, static_dir, title, base_url)
+    else if fq == "build.static_dir" do (content_dir, output_dir, val, title, base_url)
+    else if fq == "site.title" do (content_dir, output_dir, static_dir, val, base_url)
+    else if fq == "site.base_url" do (content_dir, output_dir, static_dir, title, val)
+    else (content_dir, output_dir, static_dir, title, base_url)
+    end end end end end
+  end
+
+end
