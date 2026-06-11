@@ -545,6 +545,56 @@ mod TestSigil do
     end
   end
 
+  describe "Per-page layout" do
+    test "layout: post renders distinctive markup absent from layout: default" do
+      let tmp         = "/tmp/sigil_layout_sel_" ++ to_string(System.monotonic_time())
+      let content_dir = Path.join(tmp, "content")
+      let output_dir  = Path.join(tmp, "out")
+      let _ = Dir.mkdir_p(content_dir)
+      -- One page explicitly using the default layout, one using the post layout.
+      let _ = File.write(Path.join(content_dir, "plain.md"),
+                         "---\ntitle: Plain Page\nlayout: default\n---\n\nPlain body.")
+      let _ = File.write(Path.join(content_dir, "story.md"),
+                         "---\ntitle: My Story\ndate: 2026-01-02\nlayout: post\n---\n\nStory body.")
+      let site = { content_dir = content_dir, output_dir = output_dir,
+                   static_dir = "/tmp/no_static", title = "", base_url = "" }
+      let _ = Build.run(site)
+      let plain_html = match File.read(Path.join(output_dir, "plain.html")) do
+                       Ok(s) -> s | Err(_) -> "" end
+      let story_html = match File.read(Path.join(output_dir, "story.html")) do
+                       Ok(s) -> s | Err(_) -> "" end
+      -- Both are full HTML documents.
+      assert (String.contains(plain_html, "<!DOCTYPE html>"))
+      assert (String.contains(story_html, "<!DOCTYPE html>"))
+      -- The post layout adds a distinctive <header class="post-header"> with the
+      -- title as an <h1 class="post-title"> and the date in a <time> element.
+      assert (String.contains(story_html, "<header class=\"post-header\">"))
+      assert (String.contains(story_html, "<h1 class=\"post-title\">My Story</h1>"))
+      assert (String.contains(story_html, "<time class=\"post-date\">2026-01-02</time>"))
+      -- The default layout has none of that markup.
+      assert (not (String.contains(plain_html, "post-header")))
+      assert (not (String.contains(plain_html, "post-title")))
+      let _ = Dir.rm_rf(tmp)
+    end
+
+    test "unknown layout name falls back to default wrapper" do
+      let tmp         = "/tmp/sigil_layout_unknown_" ++ to_string(System.monotonic_time())
+      let content_dir = Path.join(tmp, "content")
+      let output_dir  = Path.join(tmp, "out")
+      let _ = Dir.mkdir_p(content_dir)
+      let _ = File.write(Path.join(content_dir, "weird.md"),
+                         "---\ntitle: Weird\nlayout: nonesuch\n---\n\nBody.")
+      let site = { content_dir = content_dir, output_dir = output_dir,
+                   static_dir = "/tmp/no_static", title = "", base_url = "" }
+      let _ = Build.run(site)
+      let html = match File.read(Path.join(output_dir, "weird.html")) do
+                 Ok(s) -> s | Err(_) -> "" end
+      assert (String.contains(html, "<!DOCTYPE html>"))
+      assert (not (String.contains(html, "post-header")))
+      let _ = Dir.rm_rf(tmp)
+    end
+  end
+
   describe "M4 Build collections" do
     test "Build.run generates sitemap.xml" do
       let tmp         = "/tmp/sigil_m4_sitemap_" ++ to_string(System.monotonic_time())
