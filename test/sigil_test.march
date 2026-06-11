@@ -81,6 +81,25 @@ mod TestSigil do
       let _ = Dir.rm_rf(tmp)
     end
 
+    test "discovers markdown files in nested subdirectories" do
+      let tmp = "/tmp/sigil_nested_" ++ to_string(System.monotonic_time())
+      let content_dir = Path.join(tmp, "content")
+      let sub_dir     = Path.join(content_dir, "posts")
+      let output_dir  = Path.join(tmp, "out")
+      let _ = Dir.mkdir_p(content_dir)
+      let _ = Dir.mkdir_p(sub_dir)
+      let _ = File.write(Path.join(content_dir, "top.md"), "# Top\n\nTop body.")
+      let _ = File.write(Path.join(sub_dir, "nested.md"), "# Nested\n\nNested body.")
+      let site = { content_dir = content_dir, output_dir = output_dir, static_dir = "/tmp/no_static", title = "", base_url = "" }
+      let _ = Build.run(site)
+      -- Output is flattened by basename: content/posts/nested.md -> out/nested.html
+      let top_html = match File.read(Path.join(output_dir, "top.html")) do Ok(s) -> s | Err(_) -> "" end
+      let nested_html = match File.read(Path.join(output_dir, "nested.html")) do Ok(s) -> s | Err(_) -> "" end
+      assert (String.contains(top_html, "Top"))
+      assert (String.contains(nested_html, "Nested"))
+      let _ = Dir.rm_rf(tmp)
+    end
+
     test "returns Err when content dir does not exist" do
       let site = { content_dir = "/tmp/sigil_no_such_dir_xyz", output_dir = "/tmp/sigil_out_xyz", static_dir = "/tmp/no_static", title = "", base_url = "" }
       let result = Build.run(site)

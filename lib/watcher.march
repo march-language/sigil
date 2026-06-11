@@ -54,14 +54,10 @@ mod Watcher do
   end
 
   fn max_mtime(dir : String) : Int do
-    -- Note: scans a single directory level only (no recursion).
-    -- Content files in subdirectories are not watched. Consistent with Build.run.
-    match Dir.list_full(dir) do
-    Err(_)    -> 0
-    Ok(paths) ->
-      let md_paths = List.filter(paths, fn p -> String.ends_with(p, ".md"))
-      List.fold_left(md_paths, 0, fn (acc, path) -> mtime_acc(acc, path))
-    end
+    -- Recurses into subdirectories via Build.collect_md, matching Build.run so
+    -- that edits to nested content files (content/posts/*.md) trigger a rebuild.
+    let md_paths = Build.collect_md(dir)
+    List.fold_left(md_paths, 0, fn (acc, path) -> mtime_acc(acc, path))
   end
 
   -- Watch for changes in content_dir. output_dir and static_dir are read from
@@ -83,7 +79,7 @@ mod Watcher do
   end
 
   pfn watch_loop(content_dir : String, last_mtime : Int, version : Int) : Unit do
-    -- Note: Dir.list_full and Build.run both scan flat (no subdirs).
+    -- Note: max_mtime and Build.run both recurse into subdirectories (Build.collect_md).
     let _ = System.cmd("sleep", Cons("0.3", Nil))
     let current = max_mtime(content_dir)
     if current > last_mtime do
