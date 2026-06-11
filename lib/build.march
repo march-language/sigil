@@ -245,7 +245,7 @@ mod Build do
   -- Build all collection outputs: tag index pages, sitemap.xml, feed.xml.
   --
   -- RC note: sorted is consumed by tags_of_entries, build_tag_pages, write_sitemap,
-  -- and write_feed.  The previous closure-based approach (run_collections capturing
+  -- write_feed, and write_index.  The previous closure-based approach (run_collections capturing
   -- sorted) made sorted a _borrowed_field_var inside the closure, which suppresses
   -- Perceus IncRC for nested closure captures — recurse_sitemap and recurse_tag
   -- each captured sorted without IncRC, causing use-after-free when the first
@@ -279,7 +279,12 @@ mod Build do
       Ok(_) -> do
         match write_sitemap(output_dir, base_url, sorted) do
         Err(e) -> Err(e)
-        Ok(_) -> write_feed(output_dir, site_title, base_url, sorted)
+        Ok(_) -> do
+          match write_feed(output_dir, site_title, base_url, sorted) do
+          Err(e) -> Err(e)
+          Ok(_) -> write_index(output_dir, site_title, sorted)
+          end
+        end
         end
       end
       end
@@ -428,6 +433,43 @@ mod Build do
       let item =
         "  <item>\n" ++ "    <title>" ++ Html.escape(title) ++ "</title>\n" ++ "    <link>" ++ Html.escape(link) ++ "</link>\n" ++ pubdate ++ "  </item>\n"
       item ++ feed_items(base_url, rest)
+    end
+    end
+  end
+
+  -- ─── Home index page ─────────────────────────────────────────────────────────
+  -- Write out/index.html: a chronological archive listing every (non-draft) post,
+  -- newest first.  `entries` is the date-sorted index from build_collections.
+  pfn write_index(output_dir : String, site_title : String, entries) : Result(Unit, String) do
+    let heading = if String.is_empty(site_title) do "Home" else site_title end
+    let items = index_items(entries)
+    let body_html =
+      IOList.from_string("<h1>" ++ Html.escape(heading) ++ "</h1><ul>")
+        |> IOList.append(IOList.from_string(items))
+        |> IOList.append(IOList.from_string("</ul>"))
+    let page_html = Html.layout(heading, IOList.empty(), body_html)
+    let path = Path.join(output_dir, "index.html")
+    match File.write(path, IOList.to_string(page_html)) do
+    Err(e) -> Err("cannot write index: " ++ fmt_err(e))
+    Ok(_) -> Ok(())
+    end
+  end
+
+  -- Render the index list items as an HTML string.  Mirrors feed_items: each
+  -- entry's slug/title/date accessor borrows the entry and returns a fresh
+  -- String, so a single forward pass with tail-style recursion is RC-safe.
+  pfn index_items(entries) : String do
+    match entries do
+    Nil -> ""
+    Cons(e, rest) -> do
+      let slug  = SiteIndex.entry_slug(e)
+      let title = SiteIndex.entry_title(e)
+      let date  = SiteIndex.entry_date(e)
+      let date_html =
+        if String.is_empty(date) do "" else " <time>" ++ Html.escape(date) ++ "</time>" end
+      let item =
+        "<li><a href=\"/" ++ slug ++ ".html\">" ++ Html.escape(title) ++ "</a>" ++ date_html ++ "</li>"
+      item ++ index_items(rest)
     end
     end
   end

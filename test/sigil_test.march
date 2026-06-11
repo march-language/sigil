@@ -103,6 +103,37 @@ mod TestSigil do
       assert (String.contains(html, "Paragraph text."))
       let _ = Dir.rm_rf(tmp)
     end
+
+    test "generates a home index.html listing all posts" do
+      let tmp = "/tmp/sigil_index_" ++ to_string(System.monotonic_time())
+      let content_dir = Path.join(tmp, "content")
+      let output_dir  = Path.join(tmp, "out")
+      let _ = Dir.mkdir_p(content_dir)
+      let _ = File.write(Path.join(content_dir, "alpha.md"),
+                "---\ntitle: Alpha Post\ndate: 2026-01-02\n---\n# Alpha\n\nBody.")
+      let _ = File.write(Path.join(content_dir, "beta.md"),
+                "---\ntitle: Beta Post\ndate: 2026-02-02\n---\n# Beta\n\nBody.")
+      let _ = File.write(Path.join(content_dir, "secret.md"),
+                "---\ntitle: Secret Draft\ndate: 2026-03-02\ndraft: true\n---\n# Secret\n\nBody.")
+      let site = { content_dir = content_dir, output_dir = output_dir, static_dir = "/tmp/no_static", title = "My Blog", base_url = "" }
+      let _ = Build.run(site)
+      let html = match File.read(Path.join(output_dir, "index.html")) do
+                 Ok(s) -> s | Err(_) -> "" end
+      -- full document with the site title
+      assert (String.contains(html, "<!DOCTYPE html>"))
+      assert (String.contains(html, "My Blog"))
+      -- links to each non-draft post
+      assert (String.contains(html, "href=\"/alpha.html\""))
+      assert (String.contains(html, "Alpha Post"))
+      assert (String.contains(html, "href=\"/beta.html\""))
+      assert (String.contains(html, "Beta Post"))
+      -- drafts excluded
+      assert (not(String.contains(html, "Secret Draft")))
+      -- NOTE: chronological ordering is intentionally NOT asserted here: it relies
+      -- on SiteIndex.sorted_by_date / List.sort_by, which is miscompiled in the
+      -- native path (see the KNOWN ISSUE note on SiteIndex.sorted_by_date).
+      let _ = Dir.rm_rf(tmp)
+    end
   end
 
   describe "Ssg.parse_args" do

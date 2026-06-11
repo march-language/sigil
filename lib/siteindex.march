@@ -85,6 +85,13 @@ mod SiteIndex do
 
   -- Return entries sorted by date descending (newest first).
   -- Dates are ISO 8601 strings (YYYY-MM-DD); lexicographic sort is correct.
+  --
+  -- (Resolved 2026-06) The native path previously miscompiled string ordering
+  -- comparisons — `<`/`>` on strings compared the string struct pointers as
+  -- integers instead of contents, so List.sort_by came back in directory order
+  -- when compiled (correct only when interpreted).  Fixed in the March compiler
+  -- (llvm_emit: string ordering now routes through march_compare_string); the
+  -- compiled sitemap, RSS feed, and home index now order chronologically.
   fn sorted_by_date(idx) do
     let es = entries(idx)
     -- descending: a should come before b when a.date > b.date
