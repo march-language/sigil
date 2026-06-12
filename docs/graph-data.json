@@ -230,6 +230,160 @@
       "created_at": "2026-06-06T11:24:05.156606-04:00",
       "updated_at": "2026-06-06T11:24:05.156606-04:00",
       "metadata_json": "{\"branch\":\"main\",\"confidence\":98}"
+    },
+    {
+      "id": 22,
+      "change_id": "860111a0-07b0-4dd4-842a-f26ce87b7737",
+      "node_type": "goal",
+      "title": "Implement Sigil M2: front-matter, page meta, assets",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-06-06T12:17:25.724483-04:00",
+      "updated_at": "2026-06-06T12:17:25.724483-04:00",
+      "metadata_json": "{\"branch\":\"main\",\"confidence\":95,\"prompt\":\"Implement Sigil M2 at /Users/80197052/code/sigil. M2 adds the content model layer: front-matter parsing, typed Page metadata, and static asset copying.\\n\\nDeliverables:\\n1. lib/frontmatter.march - FrontMatter.split\\n2. lib/page.march - Page.Meta type + Page.decode\\n3. lib/assets.march - Assets.copy\\n4. Extend lib/config.march with static_dir\\n5. Modify lib/build.march to use front-matter/page meta and skip drafts\\n6. Update lib/sigil.march with --static-dir flag\\n7. Tests in test/sigil_test.march under \\\"M2\\\" describe block\"}"
+    },
+    {
+      "id": 23,
+      "change_id": "be97a933-911e-4f59-b1a7-f024f8e98d3b",
+      "node_type": "action",
+      "title": "Write M2 test block in sigil_test.march",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-06-06T12:17:52.334918-04:00",
+      "updated_at": "2026-06-06T12:17:52.334918-04:00",
+      "metadata_json": "{\"branch\":\"main\",\"confidence\":85}"
+    },
+    {
+      "id": 24,
+      "change_id": "fa269d89-2d89-4c53-a009-64b3c1b52264",
+      "node_type": "action",
+      "title": "Commit M2 modules in order",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-06-06T12:37:43.177082-04:00",
+      "updated_at": "2026-06-06T12:37:43.177082-04:00",
+      "metadata_json": "{\"branch\":\"main\",\"confidence\":90}"
+    },
+    {
+      "id": 25,
+      "change_id": "b137fce4-5b78-4b8f-a1c4-654c46b8c82e",
+      "node_type": "outcome",
+      "title": "M2 complete: 4 new modules, 13 M2 tests pass, all 25 sigil tests pass in fresh compile",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-06-06T12:38:24.616642-04:00",
+      "updated_at": "2026-06-06T12:38:24.616642-04:00",
+      "metadata_json": "{\"branch\":\"main\",\"commit\":\"01f7dca\",\"confidence\":92}"
+    },
+    {
+      "id": 26,
+      "change_id": "587e2565-4ff4-4c92-919b-8e6b856f67ec",
+      "node_type": "goal",
+      "title": "Fix FileKind OtherKind/Other mismatch in eval.ml",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-06-06T15:24:15.959517-04:00",
+      "updated_at": "2026-06-06T15:24:15.959517-04:00",
+      "metadata_json": "{\"confidence\":95,\"prompt\":\"In the March compiler/stdlib there is a naming mismatch between the declared type and the runtime representation for the \\\"other\\\" FileKind variant.\\n\\nFile: /Users/80197052/code/march/stdlib/file.march, line 12:\\n  `ptype FileKind = RegularFile | Directory | Symlink | OtherKind`\\n\\nFile: /Users/80197052/code/march/lib/eval/eval.ml, around line 3648:\\n  `| _ -> VCon (\\\"Other\\\", [])`\\n\\nThe eval returns a VCon tagged \\\"Other\\\" but the declared constructor is \\\"OtherKind\\\". Fix: rename the VCon tag in eval.ml from \\\"Other\\\" to \\\"OtherKind\\\". Also check LLVM codegen and any other places.\"}"
+    },
+    {
+      "id": 27,
+      "change_id": "677028b5-b940-4b49-a19f-4868a3a2f784",
+      "node_type": "action",
+      "title": "Rename VCon (\"Other\", []) to VCon (\"OtherKind\", []) in eval.ml:3648",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-06-06T15:24:19.969428-04:00",
+      "updated_at": "2026-06-06T15:24:19.969428-04:00",
+      "metadata_json": "{\"confidence\":95,\"files\":[\"lib/eval/eval.ml\"]}"
+    },
+    {
+      "id": 28,
+      "change_id": "22ace023-0978-4268-9003-d16701b96539",
+      "node_type": "goal",
+      "title": "Implement M4: two-pass build + collections (tag indexes, RSS, sitemap)",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-06-07T13:55:26.366091-04:00",
+      "updated_at": "2026-06-07T13:55:26.366091-04:00",
+      "metadata_json": "{\"branch\":\"main\",\"confidence\":90,\"prompt\":\"User asked: finish m4, then m5\"}"
+    },
+    {
+      "id": 29,
+      "change_id": "1ac8cddb-cf75-4a42-80a9-79cab165f9bd",
+      "node_type": "goal",
+      "title": "Complete M5: fix task_spawn live reload in compiled binaries",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-06-07T13:55:26.401919-04:00",
+      "updated_at": "2026-06-07T13:55:26.401919-04:00",
+      "metadata_json": "{\"branch\":\"main\",\"confidence\":90,\"prompt\":\"User asked: finish m4, then m5 — watcher task_spawn disabled due to heap-alloc lambda RC bug\"}"
+    },
+    {
+      "id": 30,
+      "change_id": "9bc587c5-727e-49e6-89aa-82051a0f7f10",
+      "node_type": "action",
+      "title": "Extend Config.Site with title/base_url; add Page.meta_tags; update all construction sites",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-06-07T13:55:54.892799-04:00",
+      "updated_at": "2026-06-07T13:55:54.892799-04:00",
+      "metadata_json": "{\"branch\":\"main\",\"confidence\":90}"
+    },
+    {
+      "id": 31,
+      "change_id": "9ecf5a7e-e1a8-4e5e-9ce2-c15369e1d004",
+      "node_type": "goal",
+      "title": "Debug sigil M6 branch: 13 test failures + SIGSEGV after test 35 with fixed march compiler (744708d)",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-06-10T14:29:46.724750-04:00",
+      "updated_at": "2026-06-10T14:29:46.724750-04:00",
+      "metadata_json": "{\"branch\":\"claude/wizardly-boyd-de2663\",\"confidence\":90,\"prompt\":\"Handoff doc: verify RC underflow fixes; found worktree branch failing\"}"
+    },
+    {
+      "id": 32,
+      "change_id": "c3970fc2-725f-479f-b9ba-81495a5e7e4b",
+      "node_type": "outcome",
+      "title": "Root cause found: (1) sigil commit 9023656 test file uses 3-arg run_with_layout vs 2-arg lib API - does not typecheck; (2) march swallows type errors in MARCH_LIB_PATH-imported modules, silently emitting corrupt binary (null fn-ptr call, garbage field compares). Minimal repro /tmp/swallow. Fixed compiler 744708d NOT regressed.",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-06-10T14:41:15.173646-04:00",
+      "updated_at": "2026-06-10T14:41:15.173646-04:00",
+      "metadata_json": "{\"branch\":\"claude/wizardly-boyd-de2663\",\"confidence\":95}"
+    },
+    {
+      "id": 33,
+      "change_id": "ffd4f51d-fdcd-40cb-8431-3f29951b4027",
+      "node_type": "action",
+      "title": "Fix march diagnostic filter: resolve_imports now returns loaded user files; is_user_file = membership in that list (entry + imports). v1 stdlib-dir prefix check broke forge build_check (cached tc_env spans point at other install paths). Added regression fixtures test/imports/entry_imports_ill_typed.march + dune with-accepted-exit-codes rules",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-06-10T16:00:21.183433-04:00",
+      "updated_at": "2026-06-10T16:00:21.183433-04:00",
+      "metadata_json": "{\"branch\":\"claude/wizardly-boyd-de2663\",\"confidence\":90}"
+    },
+    {
+      "id": 34,
+      "change_id": "00b4aeba-a882-4da4-96b2-61b6c7147674",
+      "node_type": "outcome",
+      "title": "Fix verified: march suite green (RC=0, 1855 alcotest incl. 147 LSP, build_check 7/7), regression fixtures RED->GREEN, binary installed. Sigil committed state now fails compile LOUDLY with 19 type errors (serve.march Conn mismatches + 3-arg layout API drift); sigil main WIP passes 105/0 fresh. /tmp/swallow repro errors correctly.",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-06-10T16:02:11.596381-04:00",
+      "updated_at": "2026-06-10T16:02:11.596381-04:00",
+      "metadata_json": "{\"branch\":\"claude/wizardly-boyd-de2663\",\"confidence\":95}"
+    },
+    {
+      "id": 35,
+      "change_id": "a188c4c2-ef19-4a82-9179-5a868039b170",
+      "node_type": "outcome",
+      "title": "Committed a8ca488 fix(cli): report type errors from imported user modules - pushed to march main (744708d..a8ca488)",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-06-10T16:03:25.626253-04:00",
+      "updated_at": "2026-06-10T16:03:25.626253-04:00",
+      "metadata_json": "{\"branch\":\"claude/wizardly-boyd-de2663\",\"confidence\":95}"
     }
   ],
   "edges": [
@@ -331,6 +485,105 @@
       "weight": 1.0,
       "rationale": "actions to outcomes",
       "created_at": "2026-06-06T11:24:05.182578-04:00"
+    },
+    {
+      "id": 10,
+      "from_node_id": 22,
+      "to_node_id": 23,
+      "from_change_id": "860111a0-07b0-4dd4-842a-f26ce87b7737",
+      "to_change_id": "be97a933-911e-4f59-b1a7-f024f8e98d3b",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "First action towards M2 goal",
+      "created_at": "2026-06-06T12:17:55.033252-04:00"
+    },
+    {
+      "id": 11,
+      "from_node_id": 22,
+      "to_node_id": 24,
+      "from_change_id": "860111a0-07b0-4dd4-842a-f26ce87b7737",
+      "to_change_id": "fa269d89-2d89-4c53-a009-64b3c1b52264",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "Committing M2 implementation",
+      "created_at": "2026-06-06T12:37:46.069111-04:00"
+    },
+    {
+      "id": 12,
+      "from_node_id": 24,
+      "to_node_id": 25,
+      "from_change_id": "fa269d89-2d89-4c53-a009-64b3c1b52264",
+      "to_change_id": "b137fce4-5b78-4b8f-a1c4-654c46b8c82e",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "Implementation outcome",
+      "created_at": "2026-06-06T12:38:24.627209-04:00"
+    },
+    {
+      "id": 13,
+      "from_node_id": 26,
+      "to_node_id": 27,
+      "from_change_id": "587e2565-4ff4-4c92-919b-8e6b856f67ec",
+      "to_change_id": "677028b5-b940-4b49-a19f-4868a3a2f784",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "implementation",
+      "created_at": "2026-06-06T15:24:19.978556-04:00"
+    },
+    {
+      "id": 14,
+      "from_node_id": 28,
+      "to_node_id": 30,
+      "from_change_id": "22ace023-0978-4268-9003-d16701b96539",
+      "to_change_id": "9bc587c5-727e-49e6-89aa-82051a0f7f10",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": null,
+      "created_at": "2026-06-07T13:55:54.906440-04:00"
+    },
+    {
+      "id": 15,
+      "from_node_id": 31,
+      "to_node_id": 32,
+      "from_change_id": "9ecf5a7e-e1a8-4e5e-9ce2-c15369e1d004",
+      "to_change_id": "c3970fc2-725f-479f-b9ba-81495a5e7e4b",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "investigation outcome",
+      "created_at": "2026-06-10T14:41:15.189288-04:00"
+    },
+    {
+      "id": 16,
+      "from_node_id": 32,
+      "to_node_id": 33,
+      "from_change_id": "c3970fc2-725f-479f-b9ba-81495a5e7e4b",
+      "to_change_id": "ffd4f51d-fdcd-40cb-8431-3f29951b4027",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "fix implementing root cause",
+      "created_at": "2026-06-10T16:00:21.197520-04:00"
+    },
+    {
+      "id": 17,
+      "from_node_id": 33,
+      "to_node_id": 34,
+      "from_change_id": "ffd4f51d-fdcd-40cb-8431-3f29951b4027",
+      "to_change_id": "00b4aeba-a882-4da4-96b2-61b6c7147674",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "verification of fix",
+      "created_at": "2026-06-10T16:02:11.612790-04:00"
+    },
+    {
+      "id": 18,
+      "from_node_id": 34,
+      "to_node_id": 35,
+      "from_change_id": "00b4aeba-a882-4da4-96b2-61b6c7147674",
+      "to_change_id": "a188c4c2-ef19-4a82-9179-5a868039b170",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "fix landed",
+      "created_at": "2026-06-10T16:03:25.646499-04:00"
     }
   ]
 }
