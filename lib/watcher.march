@@ -60,6 +60,30 @@ mod Watcher do
     List.fold_left(md_paths, 0, fn (acc, path) -> mtime_acc(acc, path))
   end
 
+  -- Max mtime over EVERY file under `dir` (recursively), not just .md — used to
+  -- watch the static asset tree (CSS/JS/images) so edits there trigger a rebuild.
+  -- Mirrors Build.collect_md_walk's tail-recursive worklist discipline.
+  fn max_mtime_tree(dir : String) : Int do
+    match Dir.list_full(dir) do
+    Err(_)      -> 0
+    Ok(entries) -> mtime_walk(entries, 0)
+    end
+  end
+
+  pfn mtime_walk(work : List(String), acc : Int) : Int do
+    match work do
+    Nil -> acc
+    Cons(p, rest) -> do
+      if Dir.exists(p) do
+        let sub = match Dir.list_full(p) do Ok(es) -> es | Err(_) -> Nil end
+        mtime_walk(List.append(sub, rest), acc)
+      else
+        mtime_walk(rest, mtime_acc(acc, p))
+      end
+    end
+    end
+  end
+
   -- Watch for changes in content_dir. output_dir and static_dir are read from
   -- the process environment (SIGIL_OUTPUT_DIR, SIGIL_STATIC_DIR) on each poll
   -- iteration to avoid Perceus RC underflow: the Perceus pass does not correctly
@@ -81,7 +105,11 @@ mod Watcher do
   pfn watch_loop(content_dir : String, last_mtime : Int, version : Int) : Unit do
     -- Note: max_mtime and Build.run both recurse into subdirectories (Build.collect_md).
     let _ = System.cmd("sleep", Cons("0.3", Nil))
-    let current = max_mtime(content_dir)
+    -- Rebuild when either the content tree (.md) OR the static asset tree changes.
+    let content_mtime = max_mtime(content_dir)
+    let static_watch  = match System.env("SIGIL_STATIC_DIR") do Some(d) -> d | None -> "static" end
+    let static_mtime  = max_mtime_tree(static_watch)
+    let current = if content_mtime > static_mtime do content_mtime else static_mtime end
     if current > last_mtime do
       let output_dir = get_output_dir()
       let static_dir = match System.env("SIGIL_STATIC_DIR") do Some(d) -> d | None -> "static" end

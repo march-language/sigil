@@ -390,6 +390,19 @@ mod TestSigil do
       assert (m > 0)
       let _ = Dir.rm_rf(tmp)
     end
+
+    test "max_mtime_tree sees non-md files in nested subdirs (static assets)" do
+      let tmp = "/tmp/sigil_mtree_" ++ to_string(System.monotonic_time())
+      let sub = Path.join(tmp, "css")
+      let _ = Dir.mkdir_p(sub)
+      let _ = File.write(Path.join(sub, "style.css"), "body{}")
+      let m = Watcher.max_mtime_tree(tmp)
+      -- max_mtime (md-only) ignores the .css; max_mtime_tree must see it
+      let m_md = Watcher.max_mtime(tmp)
+      assert (m > 0)
+      assert (m_md == 0)
+      let _ = Dir.rm_rf(tmp)
+    end
   end
 
   describe "Serve" do
