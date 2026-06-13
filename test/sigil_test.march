@@ -1026,6 +1026,24 @@ mod TestSigil do
     end
   end
 
+  describe "Build base_url normalization" do
+    test "trailing-slash base_url does not double the slash in sitemap/feed" do
+      let tmp = "/tmp/sigil_baseurl_" ++ to_string(System.monotonic_time())
+      let content_dir = Path.join(tmp, "content")
+      let output_dir  = Path.join(tmp, "out")
+      let _ = Dir.mkdir_p(content_dir)
+      let _ = File.write(Path.join(content_dir, "post.md"), "---\ntitle: P\ndate: 2026-01-01\n---\nbody")
+      let cfg = { content_dir = content_dir, output_dir = output_dir, static_dir = "/tmp/no_static", title = "March", base_url = "https://example.com/march/" }
+      let _ = Build.run(cfg)
+      let sm = match File.read(Path.join(output_dir, "sitemap.xml")) do Ok(s) -> s | Err(_) -> "" end
+      let fd = match File.read(Path.join(output_dir, "feed.xml")) do Ok(s) -> s | Err(_) -> "" end
+      assert (String.contains(sm, "https://example.com/march/post.html"))
+      assert (not(String.contains(sm, "march//post")))
+      assert (not(String.contains(fd, "march//post")))
+      let _ = Dir.rm_rf(tmp)
+    end
+  end
+
   describe "Build.run_pages (docs mode)" do
     test "skips blog collections and keeps the content index.html" do
       let tmp = "/tmp/sigil_docs_" ++ to_string(System.monotonic_time())

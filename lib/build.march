@@ -567,7 +567,8 @@ mod Build do
   end
 
   pfn sitemap_xml(base_url : String, entries) : String do
-    let prefix = if String.is_empty(base_url) do "" else base_url end
+    -- Normalise a trailing "/" so loc = base ++ "/" ++ slug never doubles it.
+    let prefix = PathUtil.strip_trailing_slash(base_url)
     let items = sitemap_items(prefix, entries)
     """<?xml version="1.0" encoding="UTF-8"?>
 """ ++ """<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
@@ -610,15 +611,16 @@ mod Build do
   end
 
   pfn feed_xml(site_title : String, base_url : String, entries) : String do
-    -- RC note: base_url is :borrow in feed_items; compute items first so the
-    -- same base_url value is used for both feed_items and Html.escape(ch_link)
-    -- without aliasing it through a let-binding (which would move ownership).
+    -- Normalise a trailing "/" once into a fresh owned `base` (strip_trailing_slash
+    -- returns a new String, not a borrow-alias of base_url), then read it twice —
+    -- in feed_items and the channel <link>.
+    let base     = PathUtil.strip_trailing_slash(base_url)
     let ch_title = if String.is_empty(site_title) do "My Site" else site_title end
     let ch_desc  = "Recent posts from " ++ ch_title
-    let items = feed_items(base_url, entries)
+    let items = feed_items(base, entries)
     """<?xml version="1.0" encoding="UTF-8"?>
 """ ++ """<rss version="2.0">
-""" ++ "<channel>\n" ++ "  <title>" ++ Html.escape(ch_title) ++ "</title>\n" ++ "  <link>" ++ Html.escape(base_url) ++ "</link>\n" ++ "  <description>" ++ Html.escape(ch_desc) ++ "</description>\n" ++ items ++ """</channel>
+""" ++ "<channel>\n" ++ "  <title>" ++ Html.escape(ch_title) ++ "</title>\n" ++ "  <link>" ++ Html.escape(base) ++ "</link>\n" ++ "  <description>" ++ Html.escape(ch_desc) ++ "</description>\n" ++ items ++ """</channel>
 """ ++ "</rss>\n"
   end
 
