@@ -435,22 +435,6 @@ mod TestSigil do
     end
   end
 
-  describe "Site" do
-    test "default returns expected values" do
-      let s = Site.default()
-      assert (Site.info_title(s) == "My Site")
-      assert (Site.info_base_url(s) == "")
-      assert (Site.info_author(s) == "")
-      assert (Site.info_description(s) == "")
-    end
-
-    test "Info record holds custom values" do
-      let s = { title = "My Blog", base_url = "https://example.com", author = "Ada", description = "A blog." }
-      assert (Site.info_title(s) == "My Blog")
-      assert (Site.info_author(s) == "Ada")
-    end
-  end
-
   describe "Build.run_with_layout" do
     test "custom layout wraps content with its own HTML structure" do
       let tmp = "/tmp/sigil_m3a_" ++ to_string(System.monotonic_time())

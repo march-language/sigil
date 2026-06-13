@@ -2,10 +2,10 @@ mod Build do
 
   -- Wrapper for a user-supplied layout function.
   -- Uses a nominal type to avoid March's curried function-type annotation ambiguity.
-  -- Site.Info is intentionally NOT part of the function type: the caller should
-  -- capture site info in the closure at creation time (e.g. in main.march) so
-  -- that Site.Info never flows through the recursive build_all_layout loop,
-  -- avoiding Perceus RC underflow on cross-module record types.
+  -- Site-wide metadata is intentionally NOT part of the function type: the caller
+  -- should capture any site info it needs in the closure at creation time (e.g. in
+  -- main.march) so that a cross-module record never flows through the recursive
+  -- build_all_layout loop, avoiding Perceus RC underflow.
   -- Usage: Build.LayoutFn(fn p -> fn c -> MyLayout.render(my_site_info, p, c))
   type LayoutFn = LayoutFn(Page.Meta -> IOList -> IOList)
 
