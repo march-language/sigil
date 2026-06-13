@@ -46,8 +46,14 @@ mod MdBlock do
         go(remaining, Nil, Cons(OrdList(start_num, items), flushed))
       else if is_bullet_item(trimmed) do
         let flushed = flush_para(para_acc, block_acc)
-        let (items, remaining) = collect_bullets(Cons(line, rest), Nil)
-        go(remaining, Nil, Cons(BulletList(items), flushed))
+        let base0 = leading_indent(line)
+        match collect_bullet_lines(Cons(line, rest), Nil) do
+        (rows, remaining) ->
+          match build_items(rows, base0) do
+          (items, _leftover) ->
+            go(remaining, Nil, Cons(BulletList(items), flushed))
+          end
+        end
       else if is_table_row(trimmed) do
         -- Lookahead: only treat as table if the very next line is a separator row.
         match rest do
@@ -125,24 +131,80 @@ mod MdBlock do
     end
   end
 
-  -- Collect consecutive bullet list items.
-  -- Returns (list_of_item_block_lists, remaining_lines).
-  -- M1: each item is parsed as inline content only (no nested blocks) to avoid the
-  -- mutual-recursion cycle go -> collect_bullets -> parse_inner -> go.
-  pfn collect_bullets(lines : List(String), acc : List(List(Block))) : (List(List(Block)), List(String)) do
+  -- Phase 1: consume the run of consecutive bullet lines, recording each as an
+  -- (indent, item_text) row.  A non-bullet line ends the run.
+  pfn collect_bullet_lines(lines : List(String), acc : List((Int, String))) : (List((Int, String)), List(String)) do
     match lines do
     Nil -> (List.reverse(acc), Nil)
     Cons(line, rest) ->
-      let t = String.trim(line)
+      let ind = leading_indent(line)
+      let t   = String.trim(line)
       if is_bullet_item(t) do
-        let item_src = strip_bullet_prefix(String.trim(line))
-        let inlines = MdInline.parse(item_src)
-        let item_blocks = Cons(Para(inlines), Nil)
-        collect_bullets(rest, Cons(item_blocks, acc))
+        let src = strip_bullet_prefix(String.trim(line))
+        collect_bullet_lines(rest, Cons((ind, src), acc))
       else
         (List.reverse(acc), lines)
       end
     end
+  end
+
+  -- Phase 2: build list items at indentation `base` from the flat rows; rows
+  -- indented deeper than an item become a nested BulletList inside it.
+  pfn build_items(rows : List((Int, String)), base : Int) : (List(List(Block)), List((Int, String))) do
+    build_items_acc(rows, base, Nil)
+  end
+
+  -- Tail-recursive accumulator form (the self-recursion stays in tail position;
+  -- March rejects a self-recursive call in a match scrutinee).
+  pfn build_items_acc(rows : List((Int, String)), base : Int, acc : List(List(Block))) : (List(List(Block)), List((Int, String))) do
+    match rows do
+    Nil -> (List.reverse(acc), Nil)
+    Cons(row, rest_rows) ->
+      match row do
+      (ind, text) ->
+        if ind < base do
+          (List.reverse(acc), Cons((ind, text), rest_rows))
+        else
+          let para = Para(MdInline.parse(text))
+          match build_children(rest_rows, base) do
+          (children, rest_after) ->
+            let item_blocks = Cons(para, children)
+            build_items_acc(rest_after, base, Cons(item_blocks, acc))
+          end
+        end
+      end
+    end
+  end
+
+  -- If the next rows are indented deeper than `parent_base`, build them into a
+  -- nested BulletList block; otherwise no children.
+  pfn build_children(rows : List((Int, String)), parent_base : Int) : (List(Block), List((Int, String))) do
+    match rows do
+    Nil -> (Nil, Nil)
+    Cons(row, rest_rows) ->
+      match row do
+      (ind, text) ->
+        if ind > parent_base do
+          match build_items(Cons((ind, text), rest_rows), ind) do
+          (items, rest) -> (Cons(BulletList(items), Nil), rest)
+          end
+        else
+          (Nil, Cons((ind, text), rest_rows))
+        end
+      end
+    end
+  end
+
+  -- Number of leading space bytes on a line (its indentation depth).
+  pfn leading_indent(line : String) : Int do
+    indent_loop(line, String.byte_size(line), 0)
+  end
+
+  pfn indent_loop(s : String, n : Int, i : Int) : Int do
+    if i >= n do i
+    else if String.slice_bytes(s, i, 1) == " " do indent_loop(s, n, i + 1)
+    else i
+    end end
   end
 
   -- True if a line looks like an ordered list item: one or more digits followed by ". ".

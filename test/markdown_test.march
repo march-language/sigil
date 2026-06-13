@@ -154,6 +154,23 @@ mod TestMd do
     end
   end
 
+  describe "Markdown nested lists" do
+    test "indented bullets form a nested sub-list" do
+      let html = IOList.to_string(MdRender.render(MdBlock.parse("- a\n  - b\n  - c\n- d")))
+      assert (String.contains(html, "</ul></li>"))
+      assert (String.contains(html, "<li>"))
+    end
+    test "flat list has no nesting" do
+      let html = IOList.to_string(MdRender.render(MdBlock.parse("- a\n- b")))
+      assert (not (String.contains(html, "</ul></li>")))
+      assert (String.contains(html, "<li>"))
+    end
+    test "two levels of nesting" do
+      let html = IOList.to_string(MdRender.render(MdBlock.parse("- a\n  - b\n    - c")))
+      assert (String.contains(html, "</ul></li></ul></li>"))
+    end
+  end
+
   describe "Markdown setext headings" do
     test "equals underline makes an h1" do
       let blocks = MdBlock.parse("My Title\n===")
