@@ -391,6 +391,20 @@ mod TestSigil do
       let _ = Dir.rm_rf(tmp)
     end
 
+    test "count_tree counts all files recursively (for delete detection)" do
+      let tmp = "/tmp/sigil_count_" ++ to_string(System.monotonic_time())
+      let sub = Path.join(tmp, "nested")
+      let _ = Dir.mkdir_p(sub)
+      let _ = File.write(Path.join(tmp, "a.md"), "1")
+      let _ = File.write(Path.join(tmp, "b.css"), "2")
+      let _ = File.write(Path.join(sub, "c.html"), "3")
+      assert (Watcher.count_tree(tmp) == 3)
+      let _ = File.write(Path.join(tmp, "b.css"), "")   -- truncate, not delete
+      let _ = Dir.rm_rf(Path.join(tmp, "b.css"))
+      assert (Watcher.count_tree(tmp) == 2)
+      let _ = Dir.rm_rf(tmp)
+    end
+
     test "max_mtime_tree sees non-md files in nested subdirs (static assets)" do
       let tmp = "/tmp/sigil_mtree_" ++ to_string(System.monotonic_time())
       let sub = Path.join(tmp, "css")

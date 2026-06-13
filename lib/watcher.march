@@ -84,13 +84,37 @@ mod Watcher do
     end
   end
 
+  -- Count every file under `dir` (recursively).  Combined with max mtime, a
+  -- changing count lets the watcher notice DELETIONS (which lower the max mtime
+  -- and would otherwise never trigger a rebuild).
+  fn count_tree(dir : String) : Int do
+    match Dir.list_full(dir) do
+    Err(_)      -> 0
+    Ok(entries) -> count_walk(entries, 0)
+    end
+  end
+
+  pfn count_walk(work : List(String), acc : Int) : Int do
+    match work do
+    Nil -> acc
+    Cons(p, rest) -> do
+      if Dir.exists(p) do
+        let sub = match Dir.list_full(p) do Ok(es) -> es | Err(_) -> Nil end
+        count_walk(List.append(sub, rest), acc)
+      else
+        count_walk(rest, acc + 1)
+      end
+    end
+    end
+  end
+
   -- Watch for changes in content_dir. output_dir and static_dir are read from
   -- the process environment (SIGIL_OUTPUT_DIR, SIGIL_STATIC_DIR) on each poll
   -- iteration to avoid Perceus RC underflow: the Perceus pass does not correctly
   -- insert incrc for function-parameter strings used in both a function call
   -- (write_version) and a TCO back-edge in the same branch.
   fn watch(content_dir : String) : Unit do
-    watch_loop(content_dir, 0, 0)
+    watch_loop(content_dir, 0, 0, 0)
   end
 
   -- Zero-capture entry point for task_spawn.  Reads content_dir from the
@@ -102,15 +126,20 @@ mod Watcher do
     watch(get_content_dir())
   end
 
-  pfn watch_loop(content_dir : String, last_mtime : Int, version : Int) : Unit do
+  pfn watch_loop(content_dir : String, last_mtime : Int, last_count : Int, version : Int) : Unit do
     -- Note: max_mtime and Build.run both recurse into subdirectories (Build.collect_md).
     let _ = System.cmd("sleep", Cons("0.3", Nil))
-    -- Rebuild when either the content tree (.md) OR the static asset tree changes.
+    -- Rebuild when the content tree (.md) OR the static asset tree changes — by
+    -- mtime (edits/adds) OR by file count (so deletions, which lower the max
+    -- mtime, still trigger a rebuild).
     let content_mtime = max_mtime(content_dir)
     let static_watch  = match System.env("SIGIL_STATIC_DIR") do Some(d) -> d | None -> "static" end
     let static_mtime  = max_mtime_tree(static_watch)
     let current = if content_mtime > static_mtime do content_mtime else static_mtime end
-    if current > last_mtime do
+    let static_watch2 = match System.env("SIGIL_STATIC_DIR") do Some(d) -> d | None -> "static" end
+    let count = count_tree(content_dir) + count_tree(static_watch2)
+    let changed = current > last_mtime || count != last_count
+    if changed do
       let output_dir = get_output_dir()
       let static_dir = match System.env("SIGIL_STATIC_DIR") do Some(d) -> d | None -> "static" end
       let site = { content_dir = content_dir, output_dir = output_dir, static_dir = static_dir,
@@ -118,17 +147,17 @@ mod Watcher do
       match Build.run(site) do
       Err(msg) ->
         println("[sigil] build error: " ++ msg)
-        -- Don't advance last_mtime so we retry on next change
-        watch_loop(content_dir, last_mtime, version)
+        -- Don't advance the baselines so we retry on next change
+        watch_loop(content_dir, last_mtime, last_count, version)
       Ok(_) ->
         let next = version + 1
         let od2 = get_output_dir()
         let _ = write_version(od2, next)
         println("[sigil] rebuilt (v" ++ int_to_string(next) ++ ")")
-        watch_loop(content_dir, current, next)
+        watch_loop(content_dir, current, count, next)
       end
     else
-      watch_loop(content_dir, last_mtime, version)
+      watch_loop(content_dir, last_mtime, last_count, version)
     end
   end
 
