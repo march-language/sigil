@@ -154,6 +154,28 @@ mod TestMd do
     end
   end
 
+  describe "Markdown emphasis flanking" do
+    test "intra-word underscores stay literal (snake_case)" do
+      let html = IOList.to_string(MdRender.render(MdBlock.parse("call my_var_name now")))
+      assert (String.contains(html, "my_var_name"))
+      assert (not (String.contains(html, "<em>")))
+    end
+    test "underscore emphasis at a word boundary still works" do
+      let html = IOList.to_string(MdRender.render(MdBlock.parse("_hi_ there")))
+      assert (String.contains(html, "<em>hi</em>"))
+    end
+    test "underscore closer followed by a letter does not close" do
+      let html = IOList.to_string(MdRender.render(MdBlock.parse("a _b_c_ d")))
+      -- closer after "b" is followed by "c" (alnum) so it can't close; the next
+      -- valid closer is the one before " d".
+      assert (String.contains(html, "<em>b_c</em>"))
+    end
+    test "asterisk intra-word still emphasizes (CommonMark allows it)" do
+      let html = IOList.to_string(MdRender.render(MdBlock.parse("a*b*c")))
+      assert (String.contains(html, "<em>b</em>"))
+    end
+  end
+
   describe "Markdown backslash escapes" do
     test "escaped asterisk is literal, not emphasis" do
       let html = IOList.to_string(MdRender.render(MdBlock.parse("a \\*b\\* c")))

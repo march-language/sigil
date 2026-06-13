@@ -151,13 +151,21 @@ mod MdInline do
             scan_run(s, n, us_close + 2, us_close + 2, Cons(Strong(us_kids), us_acc))
           end
         else
-          match find_byte_unesc(s, n, pos + 1, "_") do
-          None    -> scan_run(s, n, pos + 1, text_start, acc)
-          Some(ue_close) ->
-            let ue_acc = flush_text(s, text_start, pos, acc)
-            let ue_body = String.slice_bytes(s, pos + 1, ue_close - pos - 1)
-            let ue_kids = parse_span(ue_body)
-            scan_run(s, n, ue_close + 1, ue_close + 1, Cons(Emph(ue_kids), ue_acc))
+          -- Underscore emphasis needs a word boundary: an opener preceded by an
+          -- alphanumeric (the "_" in snake_case) is intra-word and stays literal.
+          -- Asterisk emphasis has no such restriction.
+          let prev_alnum = if pos > 0 do is_alnum(String.slice_bytes(s, pos - 1, 1)) else false end
+          if prev_alnum do
+            scan_run(s, n, pos + 1, text_start, acc)
+          else
+            match find_us_close(s, n, pos + 1) do
+            None    -> scan_run(s, n, pos + 1, text_start, acc)
+            Some(ue_close) ->
+              let ue_acc = flush_text(s, text_start, pos, acc)
+              let ue_body = String.slice_bytes(s, pos + 1, ue_close - pos - 1)
+              let ue_kids = parse_span(ue_body)
+              scan_run(s, n, ue_close + 1, ue_close + 1, Cons(Emph(ue_kids), ue_acc))
+            end
           end
         end
       else if ch == "\\" && pos + 1 < n && is_escapable(String.slice_bytes(s, pos + 1, 1)) do
@@ -175,6 +183,26 @@ mod MdInline do
   -- True for the ASCII-punctuation chars a backslash may escape (CommonMark).
   pfn is_escapable(c : String) : Bool do
     String.contains("!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~", c)
+  end
+
+  -- True for an ASCII alphanumeric byte (membership test avoids relying on
+  -- string ordering comparisons).
+  pfn is_alnum(c : String) : Bool do
+    String.contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789", c)
+  end
+
+  -- Find an unescaped "_" that can CLOSE underscore emphasis: per CommonMark an
+  -- intra-word "_" is not a valid closer, so skip any "_" immediately followed by
+  -- an alphanumeric (e.g. the middle "_" in "_b_c_").
+  pfn find_us_close(s : String, n : Int, start : Int) : Option(Int) do
+    match find_byte_unesc(s, n, start, "_") do
+    None -> None
+    Some(p) ->
+      let after_alnum = if p + 1 < n do is_alnum(String.slice_bytes(s, p + 1, 1)) else false end
+      if after_alnum do find_us_close(s, n, p + 1)
+      else Some(p)
+      end
+    end
   end
 
   -- Emit a Text node for bytes [from, to) if non-empty.
