@@ -154,6 +154,33 @@ mod TestMd do
     end
   end
 
+  describe "Markdown backslash escapes" do
+    test "escaped asterisk is literal, not emphasis" do
+      let html = IOList.to_string(MdRender.render(MdBlock.parse("a \\*b\\* c")))
+      assert (String.contains(html, "*b*"))
+      assert (not (String.contains(html, "<em>")))
+    end
+    test "escaped underscore is literal, not emphasis" do
+      let html = IOList.to_string(MdRender.render(MdBlock.parse("snake\\_case\\_here")))
+      assert (String.contains(html, "snake_case_here"))
+      assert (not (String.contains(html, "<em>")))
+    end
+    test "escaped backtick is literal, not code" do
+      let html = IOList.to_string(MdRender.render(MdBlock.parse("\\`not code\\`")))
+      assert (String.contains(html, "`not code`"))
+      assert (not (String.contains(html, "<code>")))
+    end
+    test "backslash before a non-punctuation char is preserved literally" do
+      let html = IOList.to_string(MdRender.render(MdBlock.parse("a\\bc")))
+      assert (String.contains(html, "a\\bc"))
+    end
+    test "escapes work inside emphasis spans" do
+      let html = IOList.to_string(MdRender.render(MdBlock.parse("*x\\*y*")))
+      assert (String.contains(html, "<em>"))
+      assert (String.contains(html, "x*y"))
+    end
+  end
+
   describe "MdInline.parse" do
     test "plain text becomes single Text node" do
       let result = MdInline.parse("hello world")

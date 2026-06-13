@@ -28,9 +28,13 @@ mod MdInline do
           let ic_code = String.slice_bytes(s, pos + 1, ic_close - pos - 1)
           scan_inner(s, n, ic_close + 1, ic_close + 1, Cons(Code(ic_code), ic_acc))
         end
+      else if ich == "\\" && pos + 1 < n && is_escapable(String.slice_bytes(s, pos + 1, 1)) do
+        let ic_esc_acc = flush_text(s, text_start, pos, acc)
+        let ic_esc     = String.slice_bytes(s, pos + 1, 1)
+        scan_inner(s, n, pos + 2, pos + 2, Cons(Md.Inline.Text(ic_esc), ic_esc_acc))
       else
         scan_inner(s, n, pos + 1, text_start, acc)
-      end
+      end end
     end
   end
 
@@ -122,7 +126,7 @@ mod MdInline do
             scan_run(s, n, st_close + 2, st_close + 2, Cons(Strong(st_kids), st_acc))
           end
         else
-          match find_byte(s, n, pos + 1, "*") do
+          match find_byte_unesc(s, n, pos + 1, "*") do
           None    -> scan_run(s, n, pos + 1, text_start, acc)
           Some(em_close) ->
             let em_acc = flush_text(s, text_start, pos, acc)
@@ -147,7 +151,7 @@ mod MdInline do
             scan_run(s, n, us_close + 2, us_close + 2, Cons(Strong(us_kids), us_acc))
           end
         else
-          match find_byte(s, n, pos + 1, "_") do
+          match find_byte_unesc(s, n, pos + 1, "_") do
           None    -> scan_run(s, n, pos + 1, text_start, acc)
           Some(ue_close) ->
             let ue_acc = flush_text(s, text_start, pos, acc)
@@ -156,10 +160,21 @@ mod MdInline do
             scan_run(s, n, ue_close + 1, ue_close + 1, Cons(Emph(ue_kids), ue_acc))
           end
         end
+      else if ch == "\\" && pos + 1 < n && is_escapable(String.slice_bytes(s, pos + 1, 1)) do
+        -- Backslash escape: emit the next char literally, skipping any markup it
+        -- would otherwise start (e.g. \* is a literal asterisk, not emphasis).
+        let esc_acc  = flush_text(s, text_start, pos, acc)
+        let esc_char = String.slice_bytes(s, pos + 1, 1)
+        scan_run(s, n, pos + 2, pos + 2, Cons(Md.Inline.Text(esc_char), esc_acc))
       else
         scan_run(s, n, pos + 1, text_start, acc)
-      end end end end end
+      end end end end end end
     end
+  end
+
+  -- True for the ASCII-punctuation chars a backslash may escape (CommonMark).
+  pfn is_escapable(c : String) : Bool do
+    String.contains("!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~", c)
   end
 
   -- Emit a Text node for bytes [from, to) if non-empty.
@@ -175,6 +190,20 @@ mod MdInline do
     if start >= n do None
     else if String.slice_bytes(s, start, 1) == marker do Some(start)
     else find_byte(s, n, start + 1, marker)
+    end end
+  end
+
+  -- Like find_byte but skips a marker that is backslash-escaped (preceded by a
+  -- single "\").  Used to find an emphasis closer so that e.g. *x\*y* treats the
+  -- middle "\*" as a literal and closes on the final "*".
+  pfn find_byte_unesc(s : String, n : Int, start : Int, marker : String) : Option(Int) do
+    if start >= n do None
+    else if String.slice_bytes(s, start, 1) == marker do
+      if start > 0 && String.slice_bytes(s, start - 1, 1) == "\\" do
+        find_byte_unesc(s, n, start + 1, marker)
+      else Some(start)
+      end
+    else find_byte_unesc(s, n, start + 1, marker)
     end end
   end
 
