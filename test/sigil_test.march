@@ -92,9 +92,9 @@ mod TestSigil do
       let _ = File.write(Path.join(sub_dir, "nested.md"), "# Nested\n\nNested body.")
       let site = { content_dir = content_dir, output_dir = output_dir, static_dir = "/tmp/no_static", title = "", base_url = "" }
       let _ = Build.run(site)
-      -- Output is flattened by basename: content/posts/nested.md -> out/nested.html
+      -- Output mirrors the content tree: content/posts/nested.md -> out/posts/nested.html
       let top_html = match File.read(Path.join(output_dir, "top.html")) do Ok(s) -> s | Err(_) -> "" end
-      let nested_html = match File.read(Path.join(output_dir, "nested.html")) do Ok(s) -> s | Err(_) -> "" end
+      let nested_html = match File.read(Path.join(Path.join(output_dir, "posts"), "nested.html")) do Ok(s) -> s | Err(_) -> "" end
       assert (String.contains(top_html, "Top"))
       assert (String.contains(nested_html, "Nested"))
       let _ = Dir.rm_rf(tmp)
@@ -981,6 +981,39 @@ mod TestSigil do
       let tagp = match File.read(Path.join(Path.join(output_dir, "tag"), "x.html")) do
                  Ok(s) -> s | Err(_) -> "" end
       assert (String.contains(tagp, "href=\"/march/hello.html\""))
+      let _ = Dir.rm_rf(tmp)
+    end
+  end
+
+  describe "Build.rel_slug" do
+    test "top-level file keeps its slug" do
+      assert (Build.rel_slug("content", "content/hello.md") == "hello")
+    end
+    test "nested file mirrors its subdirectory" do
+      assert (Build.rel_slug("content", "content/docs/intro.md") == "docs/intro")
+    end
+    test "trailing slash on root is tolerated" do
+      assert (Build.rel_slug("content/", "content/docs/intro.md") == "docs/intro")
+    end
+    test "path outside root falls back to basename" do
+      assert (Build.rel_slug("content", "/elsewhere/x.md") == "x")
+    end
+  end
+
+  describe "Build nested output" do
+    test "subdirectory structure is mirrored into output" do
+      let tmp = "/tmp/sigil_nested_" ++ to_string(System.monotonic_time())
+      let content_dir = Path.join(tmp, "content")
+      let docs_dir    = Path.join(content_dir, "docs")
+      let output_dir  = Path.join(tmp, "out")
+      let _ = Dir.mkdir_p(docs_dir)
+      let _ = File.write(Path.join(docs_dir, "intro.md"), "# Intro\nbody")
+      let site = { content_dir = content_dir, output_dir = output_dir,
+                   static_dir = "/tmp/no_static", title = "M", base_url = "" }
+      let _ = Build.run(site)
+      let html = match File.read(Path.join(Path.join(output_dir, "docs"), "intro.html")) do
+                 Ok(s) -> s | Err(_) -> "" end
+      assert (String.contains(html, "Intro"))
       let _ = Dir.rm_rf(tmp)
     end
   end

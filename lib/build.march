@@ -26,24 +26,13 @@ mod Build do
     String.ends_with(path, ".md")
   end
 
-  -- Path.strip_extension has the same bug. Compute the slug directly.
-  pfn slug_of(path : String) : String do
-    let base = Path.basename(path)
-    match String.last_index_of(base, ".") do
-    None -> base
-    Some(i) -> if i == 0 do base else String.slice_bytes(base, 0, i) end
-    end
-  end
-
   -- Recursively collect every `.md` file under `dir` (depth-first), returning
   -- full paths ready to open.  `Dir.exists` is true only for directories, so it
   -- distinguishes a subdirectory entry from a regular file.
   --
-  -- NOTE: output is keyed by basename (see slug_of), so nested files are
-  -- discovered but the output layout is FLAT — content/posts/foo.md and
-  -- content/foo.md both render to out/foo.html.  Avoid duplicate basenames
-  -- across subdirectories.  (Mirroring the subdir tree into the output needs
-  -- the content-root threaded through the render pass; deferred.)
+  -- NOTE: output mirrors the content tree (see rel_slug): content/posts/foo.md
+  -- renders to out/posts/foo.html.  The content-root is threaded through the
+  -- index and render passes so the slug is the source path relative to it.
   --
   -- LIMITATION: `Dir.exists` follows symlinks (stat, not lstat), so a directory
   -- symlink that points at an ancestor (content/loop -> content/) would recurse
@@ -114,6 +103,43 @@ mod Build do
         end
       end
     end
+  end
+
+  -- Return the directory portion of a path (everything before the last "/").
+  -- If there is no "/", the path is already at the root → return "." so
+  -- Dir.mkdir_p is a harmless no-op.
+  pfn parent_dir(path : String) : String do
+    match String.last_index_of(path, "/") do
+    None    -> "."
+    Some(i) -> if i == 0 do "/" else String.slice_bytes(path, 0, i) end
+    end
+  end
+
+  -- Strip a trailing ".md" (3 bytes) if present.
+  pfn drop_md_ext(s : String) : String do
+    if String.ends_with(s, ".md") do
+      String.slice_bytes(s, 0, String.byte_size(s) - 3)
+    else
+      s
+    end
+  end
+
+  -- Compute a root-relative slug that mirrors the source tree, with ".md" removed.
+  --   rel_slug("content", "content/hello.md")      == "hello"
+  --   rel_slug("content", "content/docs/intro.md") == "docs/intro"
+  -- A path that does not live under content_root falls back to its basename
+  -- (preserving the old flat behaviour for stray inputs).
+  fn rel_slug(content_root : String, src : String) : String do
+    let root     = strip_trailing_slash(content_root)
+    let with_sep = root ++ "/"
+    let plen     = String.byte_size(with_sep)
+    let rel =
+      if String.starts_with(src, with_sep) do
+        String.slice_bytes(src, plen, String.byte_size(src) - plen)
+      else
+        Path.basename(src)
+      end
+    drop_md_ext(rel)
   end
 
   -- Apply a layout. Explicit let-bindings keep intermediate closure liveness
@@ -232,7 +258,10 @@ mod Build do
         -- real recursive gather on a fresh owned copy of content_dir.
         let content_dir_r1 = Config.site_content_dir(cfg)
         let md_paths_p1 = collect_md(content_dir_r1)
-        let idx         = collect_index(md_paths_p1, SiteIndex.empty())
+        -- content_root keys the index slugs by their path relative to the content
+        -- dir so links/collections match the nested output paths.
+        let content_root_p1 = Config.site_content_dir(cfg)
+        let idx         = collect_index(content_root_p1, md_paths_p1, SiteIndex.empty())
         -- Pass 2a: list content_dir again for the render pass.
         -- Each Dir.list_full is a separate consume; fresh binding required.
         let content_dir_p2 = Config.site_content_dir(cfg)
@@ -241,6 +270,7 @@ mod Build do
         Ok(_) -> do
           let content_dir_r2 = Config.site_content_dir(cfg)
           let md_paths_p2 = collect_md(content_dir_r2)
+          let content_root_p2 = Config.site_content_dir(cfg)
           -- Derive all remaining owned values from cfg before the consuming calls.
           let output_dir_p2a = Config.site_output_dir(cfg)
           let output_dir_p2b = Config.site_output_dir(cfg)
@@ -249,7 +279,7 @@ mod Build do
           let base_url       = Config.site_base_url(cfg)
           let static_dir     = Config.site_static_dir(cfg)
           -- Pass 2a: render pages (build_all_layout borrows output_dir_p2a).
-          match build_all_layout(output_dir_p2a, sel, md_paths_p2) do
+          match build_all_layout(output_dir_p2a, content_root_p2, sel, md_paths_p2) do
           Err(msg) -> Err(msg)
           Ok(_) -> do
             -- Pass 2b: generate collections (build_collections borrows output_dir_p2b).
@@ -273,22 +303,25 @@ mod Build do
   -- Pass 2b: generate collections
   -- ─── Pass 1: collect site index ─────────────────────────────────────────────
 
-  pfn collect_index(paths : List(String), idx) do
+  -- content_root is borrowed (only read by rel_slug); thread it through the walk
+  -- exactly like a base_url, passing it to collect_one and the recursive step.
+  pfn collect_index(content_root : String, paths : List(String), idx) do
     match paths do
     Nil -> idx
     Cons(src, rest) -> do
-      let new_idx = collect_one(src, idx)
-      collect_index(rest, new_idx)
+      let new_idx = collect_one(content_root, src, idx)
+      collect_index(content_root, rest, new_idx)
     end
     end
   end
 
-  pfn collect_one(src : String, idx) do
+  pfn collect_one(content_root : String, src : String, idx) do
     -- RC note: src is a function parameter used in the scrutinee (File.read(src))
-    -- AND in the Ok arm (Page.decode(src, ...) and slug_of(src)).  Pre-capture the
-    -- slug and a decode closure BEFORE File.read so all three consuming uses of src
-    -- are visible at the same scope level and Perceus inserts the right IncRCs.
-    let slug    = slug_of(src)
+    -- AND in the Ok arm (Page.decode(src, ...) and rel_slug(content_root, src)).
+    -- Pre-capture the slug and a decode closure BEFORE File.read so all three
+    -- consuming uses of src are visible at the same scope level and Perceus
+    -- inserts the right IncRCs.  content_root is borrowed by rel_slug.
+    let slug    = rel_slug(content_root, src)
     let on_meta = fn ms -> Page.decode(src, ms)
     match File.read(src) do
     Err(_) -> idx
@@ -321,14 +354,16 @@ mod Build do
   -- a continuation closure BEFORE the first consuming call so that both uses of
   -- sel are visible at the same scope level; Perceus then inserts IncRC(sel) for
   -- the closure capture, keeping sel alive for the recursive step.
-  pfn build_all_layout(output_dir : String, sel : Selector, paths : List(String)) : Result(Unit, String) do
+  -- content_root is borrowed (only read by rel_slug); thread it alongside
+  -- output_dir through the loop and into the recursive continuation.
+  pfn build_all_layout(output_dir : String, content_root : String, sel : Selector, paths : List(String)) : Result(Unit, String) do
     match paths do
     Nil -> Ok(())
     Cons(src, rest) -> do
       -- Capture the recursive continuation BEFORE sel is consumed by build_page_layout.
       -- Both uses of sel are now visible at the same let-binding level.
-      let recurse = fn _ -> build_all_layout(output_dir, sel, rest)
-      match build_page_layout(output_dir, sel, src) do
+      let recurse = fn _ -> build_all_layout(output_dir, content_root, sel, rest)
+      match build_page_layout(output_dir, content_root, sel, src) do
       Err(msg) -> Err(msg)
       Ok(_) -> recurse(())
       end
@@ -336,16 +371,16 @@ mod Build do
     end
   end
 
-  pfn build_page_layout(output_dir : String, sel : Selector, src : String) : Result(Unit, String) do
+  pfn build_page_layout(output_dir : String, content_root : String, sel : Selector, src : String) : Result(Unit, String) do
     -- RC note: src is a function parameter used in four places:
     -- 1) File.read(src) scrutinee (consuming if File.read is :own)
     -- 2) Err arm error message string
     -- 3) Ok arm: Page.decode(src, meta_str)
-    -- 4) Ok arm: slug_of(src)  <- pre-computed as slug at outer scope
+    -- 4) Ok arm: rel_slug(content_root, src)  <- pre-computed as slug at outer scope
     -- Pre-capture uses 2-4 as closures/values BEFORE File.read so all four
     -- consuming uses are at the same sequential scope level, letting Perceus
-    -- insert 3 IncRCs for src.
-    let slug    = slug_of(src)
+    -- insert 3 IncRCs for src.  content_root is borrowed by rel_slug.
+    let slug    = rel_slug(content_root, src)
     let on_err  = fn e -> Err("cannot read " ++ src ++ ": " ++ fmt_err(e))
     let on_meta = fn ms -> Page.decode(src, ms)
     match File.read(src) do
@@ -388,9 +423,17 @@ mod Build do
           let lf   = apply_selector(sel, layout_name)
           let html = apply_layout(lf, final_meta, md_html)
           let out  = Path.join(output_dir, slug ++ ".html")
+          -- A nested slug (e.g. "docs/intro") needs its parent directory created
+          -- first.  Compute the parent by trimming at the last "/" (avoids the
+          -- Path.dirname stdlib path helpers, which share the Some(0) crash bug).
+          let out_parent = parent_dir(out)
+          match Dir.mkdir_p(out_parent) do
+          Err(e) -> Err("cannot create " ++ out_parent ++ ": " ++ fmt_err(e))
+          Ok(_) ->
           match File.write(out, IOList.to_string(html)) do
           Err(e) -> Err("cannot write " ++ out ++ ": " ++ fmt_err(e))
           Ok(_)  -> Ok(())
+          end
           end
         end
         end
