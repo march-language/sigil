@@ -23,12 +23,31 @@ mod Serve do
     end
   end
 
+  -- A slug is safe to map to <output_dir>/<slug>.html only if it cannot escape
+  -- the output directory: reject parent-dir segments (".."), an absolute/anchor
+  -- leading "/", a Windows-style backslash separator, and the empty slug.  Nested
+  -- forward-slash slugs (e.g. "docs/intro") are allowed — the build mirrors them
+  -- into out/.  This is defence-in-depth: the router only forwards single path
+  -- segments, but we do not rely on how HttpServer.path_info decodes/splits.
+  fn safe_slug(slug : String) : Bool do
+    if String.is_empty(slug) do false
+    else if String.contains(slug, "..") do false
+    else if String.contains(slug, "\\") do false
+    else if String.starts_with(slug, "/") do false
+    else true
+    end end end end
+  end
+
   pfn serve_page(slug : String, conn) do
-    let output_dir = get_output_dir()
-    let path = Path.join(output_dir, slug ++ ".html")
-    match File.read(path) do
-    Err(_)   -> HttpServer.text(conn, 404, "Not Found")
-    Ok(html) -> HttpServer.html(conn, 200, inject_reload(html))
+    if not(safe_slug(slug)) do
+      HttpServer.text(conn, 404, "Not Found")
+    else
+      let output_dir = get_output_dir()
+      let path = Path.join(output_dir, slug ++ ".html")
+      match File.read(path) do
+      Err(_)   -> HttpServer.text(conn, 404, "Not Found")
+      Ok(html) -> HttpServer.html(conn, 200, inject_reload(html))
+      end
     end
   end
 

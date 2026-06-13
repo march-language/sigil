@@ -418,6 +418,21 @@ mod TestSigil do
       let d = Watcher.get_content_dir()
       assert (d == "/tmp/sigil_cdir_test")
     end
+
+    test "safe_slug rejects path traversal" do
+      assert (not(Serve.safe_slug("../secret")))
+      assert (not(Serve.safe_slug("..")))
+      assert (not(Serve.safe_slug("a/../b")))
+      assert (not(Serve.safe_slug("/etc/passwd")))
+      assert (not(Serve.safe_slug("a\\b")))
+      assert (not(Serve.safe_slug("")))
+    end
+
+    test "safe_slug allows normal and nested slugs" do
+      assert (Serve.safe_slug("index"))
+      assert (Serve.safe_slug("docs/intro"))
+      assert (Serve.safe_slug("a-b_c"))
+    end
   end
 
   describe "Site" do
