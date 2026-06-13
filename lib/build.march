@@ -318,7 +318,12 @@ mod Build do
     let slug    = rel_slug(content_root, src)
     let on_meta = fn ms -> Page.decode(src, ms)
     match File.read(src) do
-    Err(_) -> idx
+    -- Don't swallow a read failure silently: warn so the index/sitemap/feed
+    -- omission is visible (pass 2 separately surfaces it as a hard error).
+    Err(_) -> do
+      let _ = println("[sigil] warning: skipping unreadable file in index: " ++ slug)
+      idx
+    end
     Ok(content) -> do
       -- FrontMatter.split(content:own) consumes content once, yielding both the
       -- YAML for metadata and the body for the excerpt.
