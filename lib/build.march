@@ -82,6 +82,40 @@ mod Build do
     String.replace_all(String.to_lowercase(tag), " ", "-")
   end
 
+  -- Remove a single trailing "/" if present.
+  pfn strip_trailing_slash(s : String) : String do
+    if String.ends_with(s, "/") do
+      String.slice_bytes(s, 0, String.byte_size(s) - 1)
+    else
+      s
+    end
+  end
+
+  -- Derive the root-relative URL prefix from a site base_url.
+  --   ""                              -> ""        (relative / domain root)
+  --   "https://example.com"           -> ""        (domain root)
+  --   "https://org.github.io/march"   -> "/march"  (GitHub *project* page)
+  --   "https://org.github.io/a/b/"    -> "/a/b"
+  -- Used to prefix every internal href so links resolve under a subpath.
+  fn link_prefix(base_url : String) : String do
+    match String.split_first(base_url, "://") do
+    None -> ""
+    Some(pair) ->
+      match pair do
+      (_, host_and_path) ->
+        match String.split_first(host_and_path, "/") do
+        None -> ""
+        Some(hp) ->
+          match hp do
+          (_, path) ->
+            let trimmed = strip_trailing_slash(path)
+            if String.is_empty(trimmed) do "" else "/" ++ trimmed end
+          end
+        end
+      end
+    end
+  end
+
   -- Apply a layout. Explicit let-bindings keep intermediate closure liveness
   -- visible to Perceus, preventing RC underflow.
   -- Note: site info is NOT a parameter here — it must be captured in the
