@@ -14,10 +14,10 @@ mod Config do
   end
 
   -- Accessors — avoid direct record field access across modules (Perceus RC safety).
-  -- RC note: returning a record field from a borrow-parameter function is subject
-  -- to the Perceus elision bug that drops the IncRC on the returned value.  Using
-  -- "" ++ forces an independent heap allocation so each call site gets its own
-  -- owned String and the caller can consume it without affecting the record.
+  -- These return the field directly (a borrow-return), which compiles and runs
+  -- correctly on the current compiler.  If a call site ever hits the Perceus
+  -- elision bug that drops the IncRC on a returned record field, wrap the result
+  -- in `"" ++` to force a fresh owned allocation (see SiteIndex.entry_excerpt).
   fn site_title(s : Site) : String do s.title end
   fn site_base_url(s : Site) : String do s.base_url end
   fn site_content_dir(s : Site) : String do s.content_dir end

@@ -97,12 +97,11 @@ mod SiteIndex do
   -- These borrow their argument (record field projection) so the entry stays
   -- live across multiple accessor calls on the same binding.
   --
-  -- RC note: returning a record field via a borrow-parameter function works
-  -- correctly only when Perceus inserts IncRC on the returned field value.  To
-  -- avoid a compiler elision bug that can drop that IncRC, the String accessors
-  -- concatenate an empty string ("" ++) to force an independent heap allocation.
-  -- The List accessor (entry_tags) is returned directly because lists go through
-  -- a different RC path in the runtime that is not affected by the elision bug.
+  -- RC note: these return the field directly (borrow-return), which is correct on
+  -- the current compiler.  `entry_excerpt` is the lone exception — it forces a
+  -- fresh owned String with `"" ++` to dodge a Perceus elision bug observed at its
+  -- one consuming call site.  If another accessor ever hits the same bug, apply the
+  -- same `"" ++` there rather than across the board.
 
   fn entry_slug(e : Entry) : String do e.slug end
 

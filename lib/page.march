@@ -138,8 +138,7 @@ mod Page do
   end
 
   -- Accessor for the title field — avoids direct record field access across modules.
-  -- RC note: "" ++ avoids the Perceus elision bug that drops IncRC on returned
-  -- record fields, ensuring each call site gets an independently owned String.
+  -- Returns the field directly (borrow-return); correct on the current compiler.
   fn meta_title(m : Meta) : String do
     m.title
   end
