@@ -2,7 +2,7 @@
 name = "sigil"
 version = "0.1.0"
 type = "tool"
-description = ""
-author = ""
+description = "A small static-site generator written in March: Markdown + front-matter to HTML, with custom layouts, tag/RSS/sitemap collections, and a live-reload dev server."
+author = "chase.gilliam@gmail.com"
 
 [deps]
