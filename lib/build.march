@@ -414,7 +414,11 @@ mod Build do
                             None    -> raw_title
                             end
                           end
-        let final_meta  = Page.with_title(meta, page_title)
+        -- Record the page's slug on the Meta so layouts can mark the active
+        -- nav entry.  slug is also used for the output path below; Perceus
+        -- inserts the IncRC for this first (borrowed-by-with_slug) use.
+        let titled_meta = Page.with_title(meta, page_title)
+        let final_meta  = Page.with_slug(titled_meta, slug)
         match is_draft do
         true  -> Ok(())
         false -> do

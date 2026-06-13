@@ -437,6 +437,26 @@ mod TestSigil do
       let _ = Dir.rm_rf(tmp)
     end
 
+    test "layout receives the page slug via Page.Meta" do
+      let tmp = "/tmp/sigil_slug_" ++ to_string(System.monotonic_time())
+      let content_dir = Path.join(tmp, "content")
+      let docs_dir    = Path.join(content_dir, "docs")
+      let output_dir  = Path.join(tmp, "out")
+      let _ = Dir.mkdir_p(docs_dir)
+      let _ = File.write(Path.join(docs_dir, "intro.md"), "# Intro")
+      let build_cfg = { content_dir = content_dir, output_dir = output_dir, static_dir = "/tmp/no_static", title = "", base_url = "" }
+      let lf = Build.LayoutFn(fn page -> fn content ->
+        IOList.from_string("<html data-slug=\"" ++ Page.meta_slug(page) ++ "\">")
+        |> IOList.append(content)
+        |> IOList.append(IOList.from_string("</html>"))
+      )
+      let _ = Build.run_with_layout(build_cfg, lf)
+      let html = match File.read(Path.join(Path.join(output_dir, "docs"), "intro.html")) do
+                 Ok(s) -> s | Err(_) -> "" end
+      assert (String.contains(html, "data-slug=\"docs/intro\""))
+      let _ = Dir.rm_rf(tmp)
+    end
+
     test "layout receives page title via Page.Meta" do
       let tmp = "/tmp/sigil_m3b_" ++ to_string(System.monotonic_time())
       let content_dir = Path.join(tmp, "content")
@@ -982,6 +1002,35 @@ mod TestSigil do
                  Ok(s) -> s | Err(_) -> "" end
       assert (String.contains(tagp, "href=\"/march/hello.html\""))
       let _ = Dir.rm_rf(tmp)
+    end
+  end
+
+  describe "Page.Meta fields" do
+    test "decode parses nav_order and description" do
+      let m = Page.decode("x.md", "title: T\nnav_order: 7\ndescription: hello there\n")
+      assert (Page.meta_nav_order(m) == 7)
+      assert (Page.meta_description(m) == "hello there")
+    end
+    test "decode defaults nav_order to 0 and description to empty" do
+      let m = Page.decode("x.md", "title: T\n")
+      assert (Page.meta_nav_order(m) == 0)
+      assert (Page.meta_description(m) == "")
+    end
+    test "non-numeric nav_order falls back to 0" do
+      let m = Page.decode("x.md", "nav_order: oops\n")
+      assert (Page.meta_nav_order(m) == 0)
+    end
+    test "with_slug sets the slug accessor" do
+      let m  = Page.decode("x.md", "title: T\n")
+      let m2 = Page.with_slug(m, "docs/intro")
+      assert (Page.meta_slug(m2) == "docs/intro")
+    end
+    test "with_title preserves nav_order and description" do
+      let m  = Page.decode("x.md", "nav_order: 3\ndescription: d\n")
+      let m2 = Page.with_title(m, "New")
+      assert (Page.meta_title(m2) == "New")
+      assert (Page.meta_nav_order(m2) == 3)
+      assert (Page.meta_description(m2) == "d")
     end
   end
 

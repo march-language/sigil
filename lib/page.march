@@ -1,12 +1,15 @@
 mod Page do
 
   type Meta = {
-    title     : String,
-    raw_title : Option(String),
-    date      : String,
-    layout    : String,
-    tags      : List(String),
-    draft     : Bool
+    title       : String,
+    raw_title   : Option(String),
+    date        : String,
+    layout      : String,
+    tags        : List(String),
+    draft       : Bool,
+    nav_order   : Int,
+    description : String,
+    slug        : String
   }
 
   -- Derive the slug (filename without extension) from a source path.
@@ -56,12 +59,15 @@ mod Page do
   fn decode(src_path : String, yaml_str : String) : Meta do
     let default_title = slug_of(src_path)
     if yaml_str == "" do
-      { title     = default_title,
-        raw_title = None,
-        date      = "",
-        layout    = "default",
-        tags      = Nil,
-        draft     = false }
+      { title       = default_title,
+        raw_title   = None,
+        date        = "",
+        layout      = "default",
+        tags        = Nil,
+        draft       = false,
+        nav_order   = 0,
+        description = "",
+        slug        = "" }
     else
       let lines     = String.split(yaml_str, "\n")
       -- Extract each field independently to avoid RC underflow from tuple lists.
@@ -96,12 +102,33 @@ mod Page do
                    Some(v) -> parse_flow_seq(v)
                    None    -> Nil
                    end
-      { title     = title,
-        raw_title = raw_title_opt,
-        date      = date,
-        layout    = layout,
-        tags      = tags,
-        draft     = draft }
+      let lines6 = String.split(yaml_str, "\n")
+      let nav_order = match get_field(lines6, "nav_order") do
+                      Some(v) -> parse_int_default(v, 0)
+                      None    -> 0
+                      end
+      let lines7 = String.split(yaml_str, "\n")
+      let description = match get_field(lines7, "description") do
+                        Some(v) -> v
+                        None    -> ""
+                        end
+      { title       = title,
+        raw_title   = raw_title_opt,
+        date        = date,
+        layout      = layout,
+        tags        = tags,
+        draft       = draft,
+        nav_order   = nav_order,
+        description = description,
+        slug        = "" }
+    end
+  end
+
+  -- Parse an integer string, falling back to `dflt` on any non-numeric input.
+  pfn parse_int_default(s : String, dflt : Int) : Int do
+    match String.to_int(String.trim(s)) do
+    Ok(n)  -> n
+    Err(_) -> dflt
     end
   end
 
@@ -119,12 +146,45 @@ mod Page do
 
   -- Return a new Meta with the title field replaced.
   fn with_title(m : Meta, t : String) : Meta do
-    { title     = t,
-      raw_title = m.raw_title,
-      date      = m.date,
-      layout    = m.layout,
-      tags      = m.tags,
-      draft     = m.draft }
+    { title       = t,
+      raw_title   = m.raw_title,
+      date        = m.date,
+      layout      = m.layout,
+      tags        = m.tags,
+      draft       = m.draft,
+      nav_order   = m.nav_order,
+      description = m.description,
+      slug        = m.slug }
+  end
+
+  -- Return a new Meta with the slug field replaced.  The slug is the page's
+  -- output path relative to the content root (e.g. "docs/intro"); the build
+  -- sets it at render time so layouts can mark the active nav entry.
+  fn with_slug(m : Meta, s : String) : Meta do
+    { title       = m.title,
+      raw_title   = m.raw_title,
+      date        = m.date,
+      layout      = m.layout,
+      tags        = m.tags,
+      draft       = m.draft,
+      nav_order   = m.nav_order,
+      description = m.description,
+      slug        = s }
+  end
+
+  -- Accessor for nav_order — drives sidebar ordering in custom layouts.
+  fn meta_nav_order(m : Meta) : Int do
+    m.nav_order
+  end
+
+  -- Accessor for the description field — used for the page <head> meta tag.
+  fn meta_description(m : Meta) : String do
+    m.description
+  end
+
+  -- Accessor for the slug field (set at render time; empty before that).
+  fn meta_slug(m : Meta) : String do
+    m.slug
   end
 
   -- Return the raw front-matter title if one was explicitly set, or None.
