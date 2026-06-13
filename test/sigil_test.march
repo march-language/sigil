@@ -950,4 +950,39 @@ mod TestSigil do
     end
   end
 
+  describe "Build subpath links" do
+    test "home index links are base_url-prefixed" do
+      let tmp = "/tmp/sigil_prefix_" ++ to_string(System.monotonic_time())
+      let content_dir = Path.join(tmp, "content")
+      let output_dir  = Path.join(tmp, "out")
+      let _ = Dir.mkdir_p(content_dir)
+      let _ = File.write(Path.join(content_dir, "hello.md"),
+                "---\ntitle: Hello\ndate: 2026-01-01\ntags: [x]\n---\nbody")
+      let site = { content_dir = content_dir, output_dir = output_dir,
+                   static_dir = "/tmp/no_static", title = "March",
+                   base_url = "https://org.github.io/march" }
+      let _ = Build.run(site)
+      let idx = match File.read(Path.join(output_dir, "index.html")) do
+                Ok(s) -> s | Err(_) -> "" end
+      assert (String.contains(idx, "href=\"/march/hello.html\""))
+      let _ = Dir.rm_rf(tmp)
+    end
+    test "tag page links are base_url-prefixed" do
+      let tmp = "/tmp/sigil_tagprefix_" ++ to_string(System.monotonic_time())
+      let content_dir = Path.join(tmp, "content")
+      let output_dir  = Path.join(tmp, "out")
+      let _ = Dir.mkdir_p(content_dir)
+      let _ = File.write(Path.join(content_dir, "hello.md"),
+                "---\ntitle: Hello\ndate: 2026-01-01\ntags: [x]\n---\nbody")
+      let site = { content_dir = content_dir, output_dir = output_dir,
+                   static_dir = "/tmp/no_static", title = "March",
+                   base_url = "https://org.github.io/march" }
+      let _ = Build.run(site)
+      let tagp = match File.read(Path.join(Path.join(output_dir, "tag"), "x.html")) do
+                 Ok(s) -> s | Err(_) -> "" end
+      assert (String.contains(tagp, "href=\"/march/hello.html\""))
+      let _ = Dir.rm_rf(tmp)
+    end
+  end
+
 end

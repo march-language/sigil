@@ -421,6 +421,9 @@ mod Build do
     match build_tag_dir(output_dir) do
     Err(e) -> Err(e)
     Ok(_) -> do
+      -- Derive the subpath link prefix once; base_url is borrowed (link_prefix
+      -- only concatenates), so it stays live for write_sitemap/write_feed below.
+      let prefix = link_prefix(base_url)
       let sorted = SiteIndex.sorted_by_date(idx)
       -- RC note: entry_tags returns the entry's tags list BORROWED (the entry
       -- owns it; there is no userland way to deep-copy a borrowed list).  So
@@ -434,7 +437,7 @@ mod Build do
         List.map(SiteIndex.entry_tags(e), fn t -> ("${t}", slug, title))
       end)
       let tags = SiteIndex.unique_strs(List.map(triples, fn tr -> match tr do (t, _, _) -> t end))
-      match build_tag_pages(output_dir, tags, triples) do
+      match build_tag_pages(output_dir, prefix, tags, triples) do
       Err(e) -> Err(e)
       Ok(_) -> do
         match write_sitemap(output_dir, base_url, sorted) do
@@ -442,7 +445,7 @@ mod Build do
         Ok(_) -> do
           match write_feed(output_dir, site_title, base_url, sorted) do
           Err(e) -> Err(e)
-          Ok(_) -> write_index(output_dir, site_title, sorted)
+          Ok(_) -> write_index(output_dir, prefix, site_title, sorted)
           end
         end
         end
@@ -463,7 +466,9 @@ mod Build do
 
   -- tags: distinct tag names; triples: owned (tag, slug, title) rows built by
   -- the single tag pass in build_collections.
-  pfn build_tag_pages(output_dir : String, tags : List(String), triples) : Result(Unit, String) do
+  -- prefix: root-relative URL prefix (e.g. "/march"), borrowed throughout exactly
+  -- like output_dir — only ever concatenated into hrefs.
+  pfn build_tag_pages(output_dir : String, prefix : String, tags : List(String), triples) : Result(Unit, String) do
     match tags do
     Nil -> Ok(())
     Cons(tag, rest_tags) -> do
@@ -471,10 +476,10 @@ mod Build do
       -- RC note: triples is consumed by List.filter AND by the recursive call.
       -- Capture the recursive continuation BEFORE the consuming List.filter call
       -- so both uses of triples are visible to Perceus at the same scope level.
-      let recurse = fn _ -> build_tag_pages(output_dir, rest_tags, triples)
+      let recurse = fn _ -> build_tag_pages(output_dir, prefix, rest_tags, triples)
       let tagged =
         List.filter(triples, fn tr -> match tr do (t, _, _) -> t == tag end)
-      match write_tag_page(output_dir, tag, slug, tagged) do
+      match write_tag_page(output_dir, prefix, tag, slug, tagged) do
       Err(e) -> Err(e)
       Ok(_) -> recurse(())
       end
@@ -482,9 +487,9 @@ mod Build do
     end
   end
 
-  pfn write_tag_page(output_dir : String, tag : String, slug : String, triples) : Result(Unit, String) do
+  pfn write_tag_page(output_dir : String, prefix : String, tag : String, slug : String, triples) : Result(Unit, String) do
     let title = "Posts tagged: " ++ tag
-    let items = tag_page_items(triples)
+    let items = tag_page_items(prefix, triples)
     let body_html =
       IOList.from_string("<h1>")
         |> IOList.append(IOList.from_string(Html.escape(title)))
@@ -499,13 +504,13 @@ mod Build do
     end
   end
 
-  pfn tag_page_items(triples) : IOList do
+  pfn tag_page_items(prefix : String, triples) : IOList do
     -- Each triple is an owned (tag, slug, title) row built by build_collections;
     -- the strings are independent copies, so destructuring here is RC-safe.
     Html.list(triples, fn tr -> do
       match tr do
       (_, slug, title) ->
-        IOList.from_string("<li><a href=\"/" ++ slug ++ ".html\">" ++ Html.escape(title) ++ "</a></li>")
+        IOList.from_string("<li><a href=\"" ++ prefix ++ "/" ++ slug ++ ".html\">" ++ Html.escape(title) ++ "</a></li>")
       end
     end)
   end
@@ -612,9 +617,9 @@ mod Build do
   -- ─── Home index page ─────────────────────────────────────────────────────────
   -- Write out/index.html: a chronological archive listing every (non-draft) post,
   -- newest first.  `entries` is the date-sorted index from build_collections.
-  pfn write_index(output_dir : String, site_title : String, entries) : Result(Unit, String) do
+  pfn write_index(output_dir : String, prefix : String, site_title : String, entries) : Result(Unit, String) do
     let heading = if String.is_empty(site_title) do "Home" else site_title end
-    let items = index_items(entries)
+    let items = index_items(prefix, entries)
     let body_html =
       IOList.from_string("<h1>" ++ Html.escape(heading) ++ "</h1><ul>")
         |> IOList.append(IOList.from_string(items))
@@ -630,7 +635,7 @@ mod Build do
   -- Render the index list items as an HTML string.  Mirrors feed_items: each
   -- entry's slug/title/date accessor borrows the entry and returns a fresh
   -- String, so a single forward pass with tail-style recursion is RC-safe.
-  pfn index_items(entries) : String do
+  pfn index_items(prefix : String, entries) : String do
     match entries do
     Nil -> ""
     Cons(e, rest) -> do
@@ -640,8 +645,8 @@ mod Build do
       let date_html =
         if String.is_empty(date) do "" else " <time>" ++ Html.escape(date) ++ "</time>" end
       let item =
-        "<li><a href=\"/" ++ slug ++ ".html\">" ++ Html.escape(title) ++ "</a>" ++ date_html ++ "</li>"
-      item ++ index_items(rest)
+        "<li><a href=\"" ++ prefix ++ "/" ++ slug ++ ".html\">" ++ Html.escape(title) ++ "</a>" ++ date_html ++ "</li>"
+      item ++ index_items(prefix, rest)
     end
     end
   end
