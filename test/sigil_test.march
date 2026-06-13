@@ -982,24 +982,24 @@ mod TestSigil do
     end
   end
 
-  describe "Build.link_prefix" do
+  describe "PathUtil.link_prefix" do
     test "empty base_url has no prefix" do
-      assert (Build.link_prefix("") == "")
+      assert (PathUtil.link_prefix("") == "")
     end
     test "domain root has no prefix" do
-      assert (Build.link_prefix("https://example.com") == "")
+      assert (PathUtil.link_prefix("https://example.com") == "")
     end
     test "trailing slash on domain root has no prefix" do
-      assert (Build.link_prefix("https://example.com/") == "")
+      assert (PathUtil.link_prefix("https://example.com/") == "")
     end
     test "project subpath yields a leading-slash prefix" do
-      assert (Build.link_prefix("https://org.github.io/march") == "/march")
+      assert (PathUtil.link_prefix("https://org.github.io/march") == "/march")
     end
     test "subpath trailing slash is stripped" do
-      assert (Build.link_prefix("https://org.github.io/march/") == "/march")
+      assert (PathUtil.link_prefix("https://org.github.io/march/") == "/march")
     end
     test "nested subpath is preserved" do
-      assert (Build.link_prefix("https://org.github.io/a/b") == "/a/b")
+      assert (PathUtil.link_prefix("https://org.github.io/a/b") == "/a/b")
     end
   end
 

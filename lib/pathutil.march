@@ -25,6 +25,31 @@ mod PathUtil do
     end
   end
 
+  -- Derive the root-relative URL prefix from a site base_url.
+  --   ""                              -> ""        (relative / domain root)
+  --   "https://example.com"           -> ""        (domain root)
+  --   "https://org.github.io/march"   -> "/march"  (GitHub *project* page)
+  --   "https://org.github.io/a/b/"    -> "/a/b"
+  -- Used to prefix every internal href so links resolve under a subpath.
+  fn link_prefix(base_url : String) : String do
+    match String.split_first(base_url, "://") do
+    None -> ""
+    Some(pair) ->
+      match pair do
+      (_, host_and_path) ->
+        match String.split_first(host_and_path, "/") do
+        None -> ""
+        Some(hp) ->
+          match hp do
+          (_, path) ->
+            let trimmed = strip_trailing_slash(path)
+            if String.is_empty(trimmed) do "" else "/" ++ trimmed end
+          end
+        end
+      end
+    end
+  end
+
   -- Return `path` with the `root` prefix (plus separator) stripped, falling back
   -- to the basename for a path that does not live under `root`.
   --   rel_under("content", "content/docs/intro.md") == "docs/intro.md"
