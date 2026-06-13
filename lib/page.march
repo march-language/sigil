@@ -69,8 +69,10 @@ mod Page do
         description = "",
         slug        = "" }
     else
+      -- Split the front-matter into lines ONCE; get_field consumes a list each
+      -- call, but Perceus inserts an IncRC (a refcount bump, not a deep copy)
+      -- before each non-final use, so a single owned `lines` serves every field.
       let lines     = String.split(yaml_str, "\n")
-      -- Extract each field independently to avoid RC underflow from tuple lists.
       let raw_title_opt = match get_field(lines, "title") do
                           Some(t) -> Some(t)
                           None    -> None
@@ -79,36 +81,30 @@ mod Page do
                       Some(t) -> t
                       None    -> default_title
                       end
-      let lines2 = String.split(yaml_str, "\n")
-      let date   = match get_field(lines2, "date") do
+      let date   = match get_field(lines, "date") do
                    Some(d) -> d
                    None    -> ""
                    end
-      let lines3 = String.split(yaml_str, "\n")
-      let layout = match get_field(lines3, "layout") do
+      let layout = match get_field(lines, "layout") do
                    Some(l) -> l
                    None    -> "default"
                    end
-      let lines4 = String.split(yaml_str, "\n")
-      let draft  = match get_field(lines4, "draft") do
+      let draft  = match get_field(lines, "draft") do
                    Some("true")  -> true
                    Some("True")  -> true
                    Some("yes")   -> true
                    Some("Yes")   -> true
                    _             -> false
                    end
-      let lines5 = String.split(yaml_str, "\n")
-      let tags   = match get_field(lines5, "tags") do
+      let tags   = match get_field(lines, "tags") do
                    Some(v) -> parse_flow_seq(v)
                    None    -> Nil
                    end
-      let lines6 = String.split(yaml_str, "\n")
-      let nav_order = match get_field(lines6, "nav_order") do
+      let nav_order = match get_field(lines, "nav_order") do
                       Some(v) -> parse_int_default(v, 0)
                       None    -> 0
                       end
-      let lines7 = String.split(yaml_str, "\n")
-      let description = match get_field(lines7, "description") do
+      let description = match get_field(lines, "description") do
                         Some(v) -> v
                         None    -> ""
                         end
