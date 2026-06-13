@@ -141,22 +141,18 @@ mod Collections do
   pfn sitemap_xml(base_url : String, entries) : String do
     -- Normalise a trailing "/" so loc = base ++ "/" ++ slug never doubles it.
     let prefix = PathUtil.strip_trailing_slash(base_url)
-    let items = sitemap_items(prefix, entries)
+    let items = IOList.to_string(sitemap_items(prefix, entries))
     """<?xml version="1.0" encoding="UTF-8"?>
 """ ++ """<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 """ ++ items ++ "</urlset>\n"
   end
 
-  pfn sitemap_items(base_url : String, entries) : String do
-    match entries do
-    Nil -> ""
-    Cons(e, rest) -> do
-      -- RC note: both entry_slug and entry_date borrow e; bind them explicitly
-      -- at the same let-level before any other expression uses them so Perceus
-      -- can see all borrow sites simultaneously.
+  -- Build the <url> entries as an IOList (O(n) append) rather than quadratic
+  -- String concatenation.  Each accessor borrows e and returns a fresh String.
+  pfn sitemap_items(base_url : String, entries) : IOList do
+    Html.list(entries, fn e -> do
       let slug = SiteIndex.entry_slug(e)
       let date = SiteIndex.entry_date(e)
-      let _ = e   -- ensure e is live until all borrows are bound
       let loc = base_url ++ "/" ++ slug ++ ".html"
       let lastmod =
         if String.is_empty(date) do
@@ -165,11 +161,9 @@ mod Collections do
           "  <lastmod>" ++ date ++ """</lastmod>
 """
         end
-      let item = """  <url>
-  <loc>""" ++ loc ++ "</loc>\n" ++ lastmod ++ "  </url>\n"
-      item ++ sitemap_items(base_url, rest)
-    end
-    end
+      IOList.from_string("""  <url>
+  <loc>""" ++ loc ++ "</loc>\n" ++ lastmod ++ "  </url>\n")
+    end)
   end
 
   -- ─── RSS feed ────────────────────────────────────────────────────────────────
@@ -189,20 +183,16 @@ mod Collections do
     let base     = PathUtil.strip_trailing_slash(base_url)
     let ch_title = if String.is_empty(site_title) do "My Site" else site_title end
     let ch_desc  = "Recent posts from " ++ ch_title
-    let items = feed_items(base, entries)
+    let items = IOList.to_string(feed_items(base, entries))
     """<?xml version="1.0" encoding="UTF-8"?>
 """ ++ """<rss version="2.0">
 """ ++ "<channel>\n" ++ "  <title>" ++ Html.escape(ch_title) ++ "</title>\n" ++ "  <link>" ++ Html.escape(base) ++ "</link>\n" ++ "  <description>" ++ Html.escape(ch_desc) ++ "</description>\n" ++ items ++ """</channel>
 """ ++ "</rss>\n"
   end
 
-  pfn feed_items(base_url : String, entries) : String do
-    match entries do
-    Nil -> ""
-    Cons(e, rest) -> do
-      -- RC note: all four accessors borrow e; bind them at the same let-level
-      -- before any other expression consumes them so Perceus sees every borrow
-      -- site simultaneously and keeps e live across them.
+  -- Build the <item> entries as an IOList (O(n)) rather than quadratic concat.
+  pfn feed_items(base_url : String, entries) : IOList do
+    Html.list(entries, fn e -> do
       let slug = SiteIndex.entry_slug(e)
       let title = SiteIndex.entry_title(e)
       let date = SiteIndex.entry_date(e)
@@ -222,11 +212,9 @@ mod Collections do
           "    <description><![CDATA[" ++ excerpt ++ """]]></description>
 """
         end
-      let item =
-        "  <item>\n" ++ "    <title>" ++ Html.escape(title) ++ "</title>\n" ++ "    <link>" ++ Html.escape(link) ++ "</link>\n" ++ pubdate ++ description ++ "  </item>\n"
-      item ++ feed_items(base_url, rest)
-    end
-    end
+      IOList.from_string(
+        "  <item>\n" ++ "    <title>" ++ Html.escape(title) ++ "</title>\n" ++ "    <link>" ++ Html.escape(link) ++ "</link>\n" ++ pubdate ++ description ++ "  </item>\n")
+    end)
   end
 
   -- ─── Home index page ─────────────────────────────────────────────────────────
@@ -234,10 +222,9 @@ mod Collections do
   -- newest first.  `entries` is the date-sorted index from build_collections.
   pfn write_index(output_dir : String, prefix : String, site_title : String, entries) : Result(Unit, String) do
     let heading = if String.is_empty(site_title) do "Home" else site_title end
-    let items = index_items(prefix, entries)
     let body_html =
       IOList.from_string("<h1>" ++ Html.escape(heading) ++ "</h1><ul>")
-        |> IOList.append(IOList.from_string(items))
+        |> IOList.append(index_items(prefix, entries))
         |> IOList.append(IOList.from_string("</ul>"))
     let page_html = Html.layout(heading, IOList.empty(), body_html)
     let path = Path.join(output_dir, "index.html")
@@ -250,20 +237,16 @@ mod Collections do
   -- Render the index list items as an HTML string.  Mirrors feed_items: each
   -- entry's slug/title/date accessor borrows the entry and returns a fresh
   -- String, so a single forward pass with tail-style recursion is RC-safe.
-  pfn index_items(prefix : String, entries) : String do
-    match entries do
-    Nil -> ""
-    Cons(e, rest) -> do
+  pfn index_items(prefix : String, entries) : IOList do
+    Html.list(entries, fn e -> do
       let slug  = SiteIndex.entry_slug(e)
       let title = SiteIndex.entry_title(e)
       let date  = SiteIndex.entry_date(e)
       let date_html =
         if String.is_empty(date) do "" else " <time>" ++ Html.escape(date) ++ "</time>" end
-      let item =
-        "<li><a href=\"" ++ prefix ++ "/" ++ slug ++ ".html\">" ++ Html.escape(title) ++ "</a>" ++ date_html ++ "</li>"
-      item ++ index_items(prefix, rest)
-    end
-    end
+      IOList.from_string(
+        "<li><a href=\"" ++ prefix ++ "/" ++ slug ++ ".html\">" ++ Html.escape(title) ++ "</a>" ++ date_html ++ "</li>")
+    end)
   end
 
 end
