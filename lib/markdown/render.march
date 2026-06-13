@@ -112,11 +112,34 @@ mod MdRender do
     end
   end
 
+  -- Neutralise dangerous URLs with an ALLOWLIST (a denylist misses vbscript:,
+  -- file:, blob:, control-char-prefixed schemes, etc.).  A URL with an explicit
+  -- scheme is permitted only if the scheme is known-safe; a URL with no scheme
+  -- (relative path, absolute path, fragment, query) is always allowed.  Anything
+  -- else collapses to "#" — an inert href/src that executes no script.
   pfn safe_url(url : String) : String do
-    let lower = String.to_lowercase(url)
-    if String.starts_with(lower, "javascript:") || String.starts_with(lower, "data:") do ""
-    else url
+    match String.split_first(url, ":") do
+    -- No colon → no scheme → relative/path/fragment/query: safe.
+    None -> url
+    Some(pair) ->
+      match pair do
+      (before, _) ->
+        -- A ":" that appears after a "/", "?" or "#" is part of a path/query,
+        -- not a scheme separator (e.g. "/a:b", "?x=1:2", "#a:b") → no scheme.
+        if String.contains(before, "/") || String.contains(before, "?") || String.contains(before, "#") do
+          url
+        else if is_allowed_scheme(String.to_lowercase(String.trim(before))) do
+          url
+        else
+          "#"
+        end
+        end
+      end
     end
+  end
+
+  pfn is_allowed_scheme(scheme : String) : Bool do
+    scheme == "http" || scheme == "https" || scheme == "mailto" || scheme == "tel" || scheme == "ftp"
   end
 
   pfn make_title_attr(title : String) : String do

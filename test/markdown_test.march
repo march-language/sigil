@@ -95,6 +95,30 @@ mod TestMd do
       assert (not (String.contains(html, "javascript:")))
     end
 
+    test "disallowed schemes (vbscript/data/file) are neutralized" do
+      let mk = fn u -> Cons(Para(Cons(Link(u, "", Cons(Inline.Text("x"), Nil)), Nil)), Nil)
+      let vb = IOList.to_string(MdRender.render(mk("vbscript:msgbox(1)")))
+      let dt = IOList.to_string(MdRender.render(mk("data:text/html,<script>1</script>")))
+      let fl = IOList.to_string(MdRender.render(mk("file:///etc/passwd")))
+      assert (not (String.contains(vb, "vbscript:")))
+      assert (not (String.contains(dt, "data:")))
+      assert (not (String.contains(fl, "file:")))
+    end
+
+    test "allowed schemes and relative URLs pass through" do
+      let mk = fn u -> Cons(Para(Cons(Link(u, "", Cons(Inline.Text("x"), Nil)), Nil)), Nil)
+      let https = IOList.to_string(MdRender.render(mk("https://example.com/a")))
+      let mail  = IOList.to_string(MdRender.render(mk("mailto:a@b.com")))
+      let rel   = IOList.to_string(MdRender.render(mk("docs/intro.html")))
+      let abs   = IOList.to_string(MdRender.render(mk("/march/x.html")))
+      let frag  = IOList.to_string(MdRender.render(mk("#section")))
+      assert (String.contains(https, "href=\"https://example.com/a\""))
+      assert (String.contains(mail, "href=\"mailto:a@b.com\""))
+      assert (String.contains(rel, "href=\"docs/intro.html\""))
+      assert (String.contains(abs, "href=\"/march/x.html\""))
+      assert (String.contains(frag, "href=\"#section\""))
+    end
+
     test "renders Image" do
       let blocks = Cons(Para(Cons(Image("https://example.com/img.png", "alt text", ""), Nil)), Nil)
       let html = IOList.to_string(MdRender.render(blocks))
