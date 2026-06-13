@@ -93,22 +93,6 @@ mod MdBlock do
     end end
   end
 
-  -- Collect consecutive blockquote lines, stripping "> " prefix.
-  -- Returns (stripped_lines, remaining_lines_after_bq).
-  -- NOTE: unused scaffolding for future multi-line blockquote support (M1 processes one line at a time).
-  pfn collect_bq(lines : List(String), acc : List(String)) : (List(String), List(String)) do
-    match lines do
-    Nil -> (List.reverse(acc), Nil)
-    Cons(line, rest) ->
-      let t = String.trim(line)
-      if is_blockquote(t) do
-        collect_bq(rest, Cons(strip_bq_prefix(t), acc))
-      else
-        (List.reverse(acc), lines)
-      end
-    end
-  end
-
   pfn is_bullet_item(line : String) : Bool do
     String.starts_with(line, "- ") || String.starts_with(line, "* ")
   end
