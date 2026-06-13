@@ -68,6 +68,24 @@ mod MdBlock do
         let flushed = flush_para(para_acc, block_acc)
         let h = parse_heading(trimmed)
         go(rest, Nil, Cons(h, flushed))
+      else if is_setext_underline(trimmed) do
+        -- A line of "=" (h1) or "-" (h2) immediately under paragraph text is a
+        -- setext heading; with no preceding paragraph, "---" is a thematic break
+        -- and "===" is just a paragraph line.
+        match para_acc do
+        Nil ->
+          if only_char(trimmed, "-") do
+            go(rest, Nil, Cons(ThematicBreak, block_acc))
+          else
+            go(rest, Cons(line, Nil), block_acc)
+          end
+        Cons(h, t) ->
+          let level   = setext_level(trimmed)
+          let raw     = String.join(List.reverse(Cons(h, t)), " ")
+          let anchor  = make_anchor(raw)
+          let inlines = MdInline.parse(raw)
+          go(rest, Nil, Cons(Heading(level, anchor, inlines), block_acc))
+        end
       else if is_thematic_break(trimmed) do
         let flushed = flush_para(para_acc, block_acc)
         go(rest, Nil, Cons(ThematicBreak, flushed))
@@ -76,7 +94,7 @@ mod MdBlock do
         go(rest, Nil, flushed)
       else
         go(rest, Cons(line, para_acc), block_acc)
-      end end end end end end end end
+      end end end end end end end end end
     end
   end
 
@@ -374,6 +392,16 @@ mod MdBlock do
     else
       n
     end
+  end
+
+  -- A setext underline is a non-empty line of all "=" (h1) or all "-" (h2),
+  -- with no internal spaces (a spaced "- - -" is a thematic break, not setext).
+  pfn is_setext_underline(t : String) : Bool do
+    not(String.is_empty(t)) && (only_char(t, "=") || only_char(t, "-"))
+  end
+
+  pfn setext_level(t : String) : Int do
+    if only_char(t, "=") do 1 else 2 end
   end
 
   -- A thematic break is 3+ identical chars from {-, *, _} (spaces allowed, nothing else).

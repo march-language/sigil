@@ -154,6 +154,26 @@ mod TestMd do
     end
   end
 
+  describe "Markdown setext headings" do
+    test "equals underline makes an h1" do
+      let blocks = MdBlock.parse("My Title\n===")
+      assert (match blocks do Cons(Heading(1, _, _), Nil) -> true | _ -> false end)
+    end
+    test "dash underline makes an h2" do
+      let blocks = MdBlock.parse("Subtitle\n---")
+      assert (match blocks do Cons(Heading(2, _, _), Nil) -> true | _ -> false end)
+    end
+    test "dashes with no preceding paragraph stay a thematic break" do
+      let blocks = MdBlock.parse("---")
+      assert (match blocks do Cons(ThematicBreak, Nil) -> true | _ -> false end)
+    end
+    test "setext heading renders text in the tag" do
+      let html = IOList.to_string(MdRender.render(MdBlock.parse("Hello World\n===")))
+      assert (String.contains(html, "<h1"))
+      assert (String.contains(html, "Hello World"))
+    end
+  end
+
   describe "Markdown autolinks" do
     test "absolute URL autolink" do
       let html = IOList.to_string(MdRender.render(MdBlock.parse("see <https://example.com> now")))
