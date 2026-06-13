@@ -333,7 +333,11 @@ mod MdBlock do
     match para_acc do
     Nil -> block_acc
     _   ->
-      let content = String.join(List.reverse(para_acc), "\n")
+      -- Join wrapped paragraph lines with a space (a CommonMark soft break), not a
+      -- literal "\n" — the inline parser treats "\n" as ordinary text, which would
+      -- leave a raw newline in the <p> source.  (Hard breaks — two trailing spaces
+      -- → <br> — are not yet supported.)
+      let content = String.join(List.reverse(para_acc), " ")
       let inlines = MdInline.parse(content)
       Cons(Para(inlines), block_acc)
     end

@@ -277,6 +277,12 @@ mod TestMd do
               end)
     end
 
+    test "multi-line paragraph joins lines with a space, not a raw newline" do
+      let html = IOList.to_string(MdRender.render(MdBlock.parse("line one\nline two")))
+      assert (String.contains(html, "line one line two"))
+      assert (not (String.contains(html, "line one\nline two")))
+    end
+
     test "h1 heading" do
       let result = MdBlock.parse("# Hello")
       assert (match result do
