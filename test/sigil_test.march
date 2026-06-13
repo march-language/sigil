@@ -1026,6 +1026,41 @@ mod TestSigil do
     end
   end
 
+  describe "Build.run_pages (docs mode)" do
+    test "skips blog collections and keeps the content index.html" do
+      let tmp = "/tmp/sigil_docs_" ++ to_string(System.monotonic_time())
+      let content_dir = Path.join(tmp, "content")
+      let output_dir  = Path.join(tmp, "out")
+      let _ = Dir.mkdir_p(content_dir)
+      let _ = File.write(Path.join(content_dir, "index.md"), "# Landing\n\nHomeMarker body")
+      let cfg = { content_dir = content_dir, output_dir = output_dir, static_dir = "/tmp/no_static", title = "March", base_url = "" }
+      let lf = Build.LayoutFn(fn page -> fn content ->
+        IOList.from_string("<main>") |> IOList.append(content) |> IOList.append(IOList.from_string("</main>")))
+      let _ = Build.run_pages_with_layout(cfg, lf)
+      -- index.html is the rendered landing page, not an auto archive
+      let idx = match File.read(Path.join(output_dir, "index.html")) do Ok(s) -> s | Err(_) -> "" end
+      assert (String.contains(idx, "HomeMarker"))
+      -- no blog feed generated in docs mode
+      let feed_exists = match File.read(Path.join(output_dir, "feed.xml")) do Ok(_) -> true | Err(_) -> false end
+      assert (not(feed_exists))
+      let _ = Dir.rm_rf(tmp)
+    end
+
+    test "run_with_layout (blog mode) still generates feed.xml" do
+      let tmp = "/tmp/sigil_blog_" ++ to_string(System.monotonic_time())
+      let content_dir = Path.join(tmp, "content")
+      let output_dir  = Path.join(tmp, "out")
+      let _ = Dir.mkdir_p(content_dir)
+      let _ = File.write(Path.join(content_dir, "post.md"), "# Post\n\nbody")
+      let cfg = { content_dir = content_dir, output_dir = output_dir, static_dir = "/tmp/no_static", title = "March", base_url = "" }
+      let lf = Build.LayoutFn(fn page -> fn content -> content)
+      let _ = Build.run_with_layout(cfg, lf)
+      let feed_exists = match File.read(Path.join(output_dir, "feed.xml")) do Ok(_) -> true | Err(_) -> false end
+      assert feed_exists
+      let _ = Dir.rm_rf(tmp)
+    end
+  end
+
   describe "Page.Meta fields" do
     test "decode parses nav_order and description" do
       let m = Page.decode("x.md", "title: T\nnav_order: 7\ndescription: hello there\n")

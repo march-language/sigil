@@ -241,8 +241,26 @@ mod Build do
   end
 
   -- Same two-pass build as run_with_layout, but the render pass dispatches the
-  -- wrapper per page via a Selector (keyed on Page.meta_layout).
+  -- wrapper per page via a Selector (keyed on Page.meta_layout).  Generates the
+  -- blog collections (home archive, tags, sitemap, RSS).
   fn run_with_selector(cfg : Config.Site, sel : Selector) : Result(Unit, String) do
+    run_core(cfg, sel, true)
+  end
+
+  -- ─── Docs mode ───────────────────────────────────────────────────────────────
+  -- Like run_with_selector but WITHOUT the blog collections.  Use this for a
+  -- docs/landing site: the auto-generated out/index.html archive would otherwise
+  -- clobber a hand-authored content/index.md, and RSS/tags/sitemap are blog-only.
+  fn run_pages_with_selector(cfg : Config.Site, sel : Selector) : Result(Unit, String) do
+    run_core(cfg, sel, false)
+  end
+
+  fn run_pages_with_layout(cfg : Config.Site, lf : LayoutFn) : Result(Unit, String) do
+    run_pages_with_selector(cfg, const_selector(lf))
+  end
+
+  -- gen_collections gates pass 2b: true → blog mode, false → docs mode.
+  fn run_core(cfg : Config.Site, sel : Selector, gen_collections : Bool) : Result(Unit, String) do
     -- mkdir consumes its argument; derive a dedicated binding for it.
     let output_dir_mk = Config.site_output_dir(cfg)
     match Dir.mkdir_p(output_dir_mk) do
@@ -282,8 +300,12 @@ mod Build do
           match build_all_layout(output_dir_p2a, content_root_p2, sel, md_paths_p2) do
           Err(msg) -> Err(msg)
           Ok(_) -> do
-            -- Pass 2b: generate collections (build_collections borrows output_dir_p2b).
-            match build_collections(output_dir_p2b, site_title, base_url, idx) do
+            -- Pass 2b: generate collections only in blog mode.  In docs mode the
+            -- conditional's else branch leaves idx/site_title/base_url/output_dir_p2b
+            -- unconsumed; Perceus inserts their DecRCs there automatically.
+            match (if gen_collections do
+                     build_collections(output_dir_p2b, site_title, base_url, idx)
+                   else Ok(()) end) do
             Err(msg) -> Err(msg)
             -- Assets.copy consumes both its args; use the dedicated copies.
             Ok(_) -> Assets.copy(static_dir, output_dir_cpy)
