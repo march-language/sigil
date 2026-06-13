@@ -1,0 +1,119 @@
+-- Property-based tests for sigil's pure core functions.
+-- Run with: forge test test/properties_test.march
+--
+-- Each Check.all runs the property on 100 generated inputs and shrinks to a
+-- minimal counterexample on failure (replay with `forge test --seed=<N>`).
+-- We only target PUBLIC, pure functions with clear algebraic invariants:
+--   * FrontMatter.split  — front-matter splitting
+--   * SiteIndex.unique_strs — string de-duplication
+
+mod TestProperties do
+
+  -- ── Generators ──────────────────────────────────────────────────────────────
+
+  -- A small character alphabet (includes a space and newline) joined into a
+  -- string.  No "-", so a generated string can never accidentally contain the
+  -- "---\n" front-matter delimiter.
+  fn gen_nodash() do
+    Gen.map(
+      Gen.list(Gen.element(Cons("a", Cons("b", Cons("c", Cons(" ", Cons("x", Cons("\n", Nil)))))))),
+      fn cs -> String.join(cs, ""))
+  end
+
+  -- Like gen_nodash but may also contain "-", so generated strings can look like
+  -- arbitrary post bodies (including stray delimiters).
+  fn gen_str() do
+    Gen.map(
+      Gen.list(Gen.element(Cons("a", Cons("-", Cons("c", Cons(" ", Cons("x", Cons("\n", Nil)))))))),
+      fn cs -> String.join(cs, ""))
+  end
+
+  -- A small word alphabet that produces frequent duplicates, ideal for
+  -- exercising de-duplication invariants.
+  fn gen_words() do
+    Gen.list(Gen.element(Cons("a", Cons("b", Cons("c", Cons("march", Cons("ssg", Nil)))))))
+  end
+
+  -- ── List/string helpers ─────────────────────────────────────────────────────
+
+  fn has_no_dups(xs : List(String)) : Bool do
+    match xs do
+    Nil -> true
+    Cons(h, t) -> if List.any(t, fn x -> x == h) do false else has_no_dups(t) end
+    end
+  end
+
+  -- Every element of xs is a member of ys.
+  fn all_in(xs : List(String), ys : List(String)) : Bool do
+    List.all(xs, fn x -> List.any(ys, fn y -> y == x))
+  end
+
+  fn list_eq_str(xs : List(String), ys : List(String)) : Bool do
+    if List.length(xs) != List.length(ys) do false
+    else List.all(List.zip(xs, ys), fn p -> match p do (a, b) -> a == b end)
+    end
+  end
+
+  -- True iff splitting a well-formed "---\n{yaml}---\n{body}" recovers (yaml, body).
+  -- Requires yaml to contain no "-" (guaranteed by gen_nodash) so the first
+  -- closing delimiter is the intended one.
+  fn split_roundtrips(yaml : String, body : String) : Bool do
+    match FrontMatter.split("---\n" ++ yaml ++ "---\n" ++ body) do
+    (y, b) -> y == yaml && b == body
+    end
+  end
+
+  -- ── FrontMatter.split ────────────────────────────────────────────────────────
+
+  describe "FrontMatter.split (property)" do
+    -- Content with no leading "---\n" delimiter must be returned verbatim as the
+    -- body, with empty front-matter.
+    test "content without front-matter is returned unchanged" do
+      Check.all(gen_nodash(), fn s ->
+        match FrontMatter.split(s) do
+        (yaml, body) -> String.is_empty(yaml) && body == s
+        end
+      )
+    end
+
+    -- Well-formed front-matter round-trips: re-assembling the delimiters around a
+    -- delimiter-free yaml and an arbitrary body and splitting recovers both parts.
+    test "well-formed front-matter round-trips" do
+      Check.all(Gen.tuple2(gen_nodash(), gen_str()), fn pair ->
+        match pair do (yaml, body) -> split_roundtrips(yaml, body) end
+      )
+    end
+  end
+
+  -- ── SiteIndex.unique_strs ────────────────────────────────────────────────────
+
+  describe "SiteIndex.unique_strs (property)" do
+    -- The result never contains a duplicate.
+    test "output has no duplicates" do
+      Check.all(gen_words(), fn xs -> has_no_dups(SiteIndex.unique_strs(xs)))
+    end
+
+    -- The result contains exactly the same set of elements as the input
+    -- (every input value survives; no value is invented).
+    test "preserves the set of elements" do
+      Check.all(gen_words(), fn xs ->
+        let u = SiteIndex.unique_strs(xs)
+        all_in(xs, u) && all_in(u, xs)
+      )
+    end
+
+    -- unique_strs accumulates into `seen` and returns it as-is, so the
+    -- output is REVERSED relative to first-occurrence order (see the
+    -- "reverse order" note on unique_acc in siteindex.march).  On a list
+    -- that is already duplicate-free, a second pass therefore drops
+    -- nothing and exactly reverses: unique_strs(u) == reverse(u).
+    -- (Plain idempotence — unique_strs(u) == u — is false by design.)
+    test "second pass on a dups-free list only reverses" do
+      Check.all(gen_words(), fn xs ->
+        let u = SiteIndex.unique_strs(xs)
+        list_eq_str(SiteIndex.unique_strs(u), List.reverse(u))
+      )
+    end
+  end
+
+end
