@@ -326,6 +326,27 @@ mod TestSigil do
       assert (match result do Ok(_) -> true | Err(_) -> false end)
     end
 
+    test "Assets.copy mirrors nested subdirectories" do
+      let tmp        = "/tmp/sigil_assets_nested_" ++ to_string(System.monotonic_time())
+      let static_dir = Path.join(tmp, "static")
+      let sub        = Path.join(static_dir, "stdlib")
+      let deep       = Path.join(sub, "scroll")
+      let output_dir = Path.join(tmp, "out")
+      let _ = Dir.mkdir_p(deep)
+      let _ = File.write(Path.join(static_dir, "style.css"), "body{}")
+      let _ = File.write(Path.join(sub, "Foo.html"), "<h1>Foo</h1>")
+      let _ = File.write(Path.join(deep, "List.md"), "scroll source")
+      let result = Assets.copy(static_dir, output_dir)
+      assert (match result do Ok(_) -> true | Err(_) -> false end)
+      let top    = match File.read(Path.join(output_dir, "style.css")) do Ok(s) -> s | Err(_) -> "" end
+      let nested = match File.read(Path.join(Path.join(output_dir, "stdlib"), "Foo.html")) do Ok(s) -> s | Err(_) -> "" end
+      let deepf  = match File.read(Path.join(Path.join(Path.join(output_dir, "stdlib"), "scroll"), "List.md")) do Ok(s) -> s | Err(_) -> "" end
+      assert (String.contains(top, "body{}"))
+      assert (String.contains(nested, "Foo"))
+      assert (String.contains(deepf, "scroll source"))
+      let _ = Dir.rm_rf(tmp)
+    end
+
     -- ── Config.default with static_dir ───────────────────────────────────────
 
     test "Config.default has static_dir field" do

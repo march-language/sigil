@@ -4,9 +4,13 @@ mod Assets do
     to_string(e)
   end
 
-  -- Copy all files from static_dir to output_dir.
-  -- Creates output_dir if needed.
-  -- Returns Ok(()) if static_dir doesn't exist (optional feature).
+  -- Recursively copy static_dir to output_dir, MIRRORING the subdirectory tree
+  -- (e.g. static/stdlib/Foo.html -> out/stdlib/Foo.html).  Creates output_dir if
+  -- needed.  Returns Ok(()) if static_dir doesn't exist (optional feature).
+  --
+  -- `root` and `dest_root` are borrowed throughout (only concatenated into
+  -- mirrored paths); each entry `src` is consumed once per iteration, mirroring
+  -- the worklist discipline in Build.collect_md_walk.
   fn copy(static_dir : String, output_dir : String) : Result(Unit, String) do
     if not(Dir.exists(static_dir)) do
       Ok(())
@@ -14,7 +18,10 @@ mod Assets do
       match Dir.mkdir_p(output_dir) do
       Err(e) -> Err("cannot create output dir: " ++ fmt_err(e))
       Ok(_) ->
-        match Dir.list_full(static_dir) do
+        -- A dedicated owned copy of static_dir for the listing; the originals
+        -- are threaded as the (borrowed) mirror roots.
+        let list_dir = "" ++ static_dir
+        match Dir.list_full(list_dir) do
         Err(e) -> Err("cannot list static dir: " ++ fmt_err(e))
         Ok(paths) -> copy_all(static_dir, output_dir, paths)
         end
@@ -22,27 +29,75 @@ mod Assets do
     end
   end
 
-  pfn copy_all(static_dir : String, output_dir : String, paths : List(String)) : Result(Unit, String) do
+  pfn copy_all(root : String, dest_root : String, paths : List(String)) : Result(Unit, String) do
     match paths do
     Nil -> Ok(())
-    Cons(src, rest) ->
-      match copy_file(static_dir, output_dir, src) do
+    Cons(src, rest) -> do
+      let recurse = fn _ -> copy_all(root, dest_root, rest)
+      match copy_entry(root, dest_root, src) do
       Err(msg) -> Err(msg)
-      Ok(_)    -> copy_all(static_dir, output_dir, rest)
+      Ok(_)    -> recurse(())
+      end
+    end
+    end
+  end
+
+  -- A directory entry recurses; a file entry is copied to its mirrored path.
+  pfn copy_entry(root : String, dest_root : String, src : String) : Result(Unit, String) do
+    if Dir.exists(src) do
+      match Dir.list_full(src) do
+      Err(e) -> Err("cannot list dir " ++ src ++ ": " ++ fmt_err(e))
+      Ok(sub) -> copy_all(root, dest_root, sub)
+      end
+    else
+      copy_file(root, dest_root, src)
+    end
+  end
+
+  pfn copy_file(root : String, dest_root : String, src : String) : Result(Unit, String) do
+    -- Mirror the path relative to the static root into the output root.
+    let rel = rel_under(root, src)
+    let dst = Path.join(dest_root, rel)
+    let dst_parent = parent_dir(dst)
+    match Dir.mkdir_p(dst_parent) do
+    Err(e) -> Err("cannot create " ++ dst_parent ++ ": " ++ fmt_err(e))
+    Ok(_) ->
+      match File.read(src) do
+      Err(e) -> Err("cannot read " ++ src ++ ": " ++ fmt_err(e))
+      Ok(content) ->
+        match File.write(dst, content) do
+        Err(e) -> Err("cannot write " ++ dst ++ ": " ++ fmt_err(e))
+        Ok(_)  -> Ok(())
+        end
       end
     end
   end
 
-  pfn copy_file(static_dir : String, output_dir : String, src : String) : Result(Unit, String) do
-    let name = Path.basename(src)
-    let dst  = Path.join(output_dir, name)
-    match File.read(src) do
-    Err(e) -> Err("cannot read " ++ src ++ ": " ++ fmt_err(e))
-    Ok(content) ->
-      match File.write(dst, content) do
-      Err(e) -> Err("cannot write " ++ dst ++ ": " ++ fmt_err(e))
-      Ok(_)  -> Ok(())
-      end
+  -- Return `src` with the `root` prefix (plus separator) stripped, falling back
+  -- to the basename for a path that is not under `root`.
+  pfn rel_under(root : String, src : String) : String do
+    let with_sep = strip_trailing_slash(root) ++ "/"
+    let plen     = String.byte_size(with_sep)
+    if String.starts_with(src, with_sep) do
+      String.slice_bytes(src, plen, String.byte_size(src) - plen)
+    else
+      Path.basename(src)
+    end
+  end
+
+  pfn strip_trailing_slash(s : String) : String do
+    if String.ends_with(s, "/") do
+      String.slice_bytes(s, 0, String.byte_size(s) - 1)
+    else
+      s
+    end
+  end
+
+  -- Directory portion of a path (everything before the last "/"), or "." if none.
+  pfn parent_dir(path : String) : String do
+    match String.last_index_of(path, "/") do
+    None    -> "."
+    Some(i) -> if i == 0 do "/" else String.slice_bytes(path, 0, i) end
     end
   end
 
