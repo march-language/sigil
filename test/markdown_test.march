@@ -154,6 +154,27 @@ mod TestMd do
     end
   end
 
+  describe "Markdown autolinks" do
+    test "absolute URL autolink" do
+      let html = IOList.to_string(MdRender.render(MdBlock.parse("see <https://example.com> now")))
+      assert (String.contains(html, "<a href=\"https://example.com\">https://example.com</a>"))
+    end
+    test "email autolink becomes mailto" do
+      let html = IOList.to_string(MdRender.render(MdBlock.parse("mail <a@b.com> please")))
+      assert (String.contains(html, "href=\"mailto:a@b.com\""))
+      assert (String.contains(html, ">a@b.com</a>"))
+    end
+    test "non-url angle brackets stay literal" do
+      let html = IOList.to_string(MdRender.render(MdBlock.parse("x < y > z")))
+      assert (String.contains(html, "&lt; y &gt;"))
+      assert (not (String.contains(html, "<a ")))
+    end
+    test "dangerous scheme autolink is rejected" do
+      let html = IOList.to_string(MdRender.render(MdBlock.parse("<javascript://alert>")))
+      assert (not (String.contains(html, "<a ")))
+    end
+  end
+
   describe "Markdown emphasis flanking" do
     test "intra-word underscores stay literal (snake_case)" do
       let html = IOList.to_string(MdRender.render(MdBlock.parse("call my_var_name now")))

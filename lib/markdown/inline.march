@@ -168,6 +168,20 @@ mod MdInline do
             end
           end
         end
+      else if ch == "<" do
+        -- Autolink: <https://…>, <mailto:…>, or a bare <email@host>.
+        match find_byte(s, n, pos + 1, ">") do
+        None -> scan_run(s, n, pos + 1, text_start, acc)
+        Some(gt) ->
+          let al_url_in = String.slice_bytes(s, pos + 1, gt - pos - 1)
+          let al_text   = String.slice_bytes(s, pos + 1, gt - pos - 1)
+          match autolink_url(al_url_in) do
+          None -> scan_run(s, n, pos + 1, text_start, acc)
+          Some(al_url) ->
+            let al_acc = flush_text(s, text_start, pos, acc)
+            scan_run(s, n, gt + 1, gt + 1, Cons(Link(al_url, "", Cons(Md.Inline.Text(al_text), Nil)), al_acc))
+          end
+        end
       else if ch == "\\" && pos + 1 < n && is_escapable(String.slice_bytes(s, pos + 1, 1)) do
         -- Backslash escape: emit the next char literally, skipping any markup it
         -- would otherwise start (e.g. \* is a literal asterisk, not emphasis).
@@ -176,13 +190,32 @@ mod MdInline do
         scan_run(s, n, pos + 2, pos + 2, Cons(Md.Inline.Text(esc_char), esc_acc))
       else
         scan_run(s, n, pos + 1, text_start, acc)
-      end end end end end end
+      end end end end end end end
     end
   end
 
   -- True for the ASCII-punctuation chars a backslash may escape (CommonMark).
   pfn is_escapable(c : String) : Bool do
     String.contains("!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~", c)
+  end
+
+  -- Validate an autolink's inner text and return the href, or None if it is not
+  -- a recognised (safe) autolink.  Allows http/https/ftp/mailto URIs and bare
+  -- emails (→ mailto:); rejects anything with a space or an unrecognised scheme
+  -- (so <javascript://…> is left as literal text).
+  pfn autolink_url(inner : String) : Option(String) do
+    if String.is_empty(inner) || String.contains(inner, " ") do None
+    else
+      let low = String.to_lowercase(inner)
+      if String.starts_with(low, "http://") || String.starts_with(low, "https://")
+         || String.starts_with(low, "ftp://") || String.starts_with(low, "mailto:") do
+        Some(inner)
+      else if String.contains(inner, "@") && String.contains(inner, ".") do
+        Some("mailto:" ++ inner)
+      else
+        None
+      end end
+    end
   end
 
   -- True for an ASCII alphanumeric byte (membership test avoids relying on
