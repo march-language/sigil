@@ -373,7 +373,14 @@ mod TestMd do
 
   describe "MdBlock.parse" do
     test "empty string returns empty list" do
-      assert (MdBlock.parse("") == Nil)
+      -- Check emptiness by pattern match, not `==`: Block is recursive
+      -- (BulletList(List(List(Block)))), so List(Block) has no derivable Eq.
+      let is_empty =
+        match MdBlock.parse("") do
+        Nil -> true
+        Cons(_, _) -> false
+        end
+      assert is_empty
     end
 
     test "single paragraph" do

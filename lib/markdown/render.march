@@ -91,7 +91,7 @@ mod MdRender do
 
   pfn render_inline(inline : Inline) : IOList do
     match inline do
-    Text(s)    -> IOList.from_string(Html.escape(s))
+    Inline.Text(s) -> IOList.from_string(Html.escape(s))
     Code(s)    -> IOList.from_string("<code>" ++ Html.escape(s) ++ "</code>")
     Emph(inlines) ->
       IOList.from_string("<em>")

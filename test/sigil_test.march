@@ -371,7 +371,7 @@ mod TestSigil do
       -- all four uses (mkdir, write, read, rm_rf) are sequential uses of a function
       -- parameter.  Perceus handles multi-use function parameters correctly.
       let tmp = "/tmp/sigil_watcher_" ++ to_string(System.monotonic_time())
-      assert (TestSigil.watcher_roundtrip(tmp))
+      assert (watcher_roundtrip(tmp))
     end
 
     test "max_mtime returns 0 for empty dir" do

@@ -483,14 +483,16 @@ mod Build do
   end
 
   -- Concatenate the text content of a list of inline nodes.
-  -- Uses unqualified constructor names to match March's type resolution rules.
+  -- `Text` is qualified as `Inline.Text` because the stdlib Xml module also
+  -- defines a `Text` constructor (on XmlNode); a bare `Text` pattern is
+  -- ambiguous.
   pfn inlines_to_text(inlines : List(Inline)) : String do
     match inlines do
     Nil -> ""
     Cons(inline, rest) -> do
       let piece =
         match inline do
-        Text(s) -> s
+        Inline.Text(s) -> s
         Code(s) -> s
         Emph(inner) -> inlines_to_text(inner)
         Strong(inner) -> inlines_to_text(inner)
