@@ -71,15 +71,6 @@ mod Build do
     String.replace_all(String.to_lowercase(tag), " ", "-")
   end
 
-  -- Remove a single trailing "/" if present.
-  pfn strip_trailing_slash(s : String) : String do
-    if String.ends_with(s, "/") do
-      String.slice_bytes(s, 0, String.byte_size(s) - 1)
-    else
-      s
-    end
-  end
-
   -- Derive the root-relative URL prefix from a site base_url.
   --   ""                              -> ""        (relative / domain root)
   --   "https://example.com"           -> ""        (domain root)
@@ -97,21 +88,11 @@ mod Build do
         Some(hp) ->
           match hp do
           (_, path) ->
-            let trimmed = strip_trailing_slash(path)
+            let trimmed = PathUtil.strip_trailing_slash(path)
             if String.is_empty(trimmed) do "" else "/" ++ trimmed end
           end
         end
       end
-    end
-  end
-
-  -- Return the directory portion of a path (everything before the last "/").
-  -- If there is no "/", the path is already at the root → return "." so
-  -- Dir.mkdir_p is a harmless no-op.
-  pfn parent_dir(path : String) : String do
-    match String.last_index_of(path, "/") do
-    None    -> "."
-    Some(i) -> if i == 0 do "/" else String.slice_bytes(path, 0, i) end
     end
   end
 
@@ -130,16 +111,7 @@ mod Build do
   -- A path that does not live under content_root falls back to its basename
   -- (preserving the old flat behaviour for stray inputs).
   fn rel_slug(content_root : String, src : String) : String do
-    let root     = strip_trailing_slash(content_root)
-    let with_sep = root ++ "/"
-    let plen     = String.byte_size(with_sep)
-    let rel =
-      if String.starts_with(src, with_sep) do
-        String.slice_bytes(src, plen, String.byte_size(src) - plen)
-      else
-        Path.basename(src)
-      end
-    drop_md_ext(rel)
+    drop_md_ext(PathUtil.rel_under(content_root, src))
   end
 
   -- Apply a layout. Explicit let-bindings keep intermediate closure liveness
@@ -452,7 +424,7 @@ mod Build do
           -- A nested slug (e.g. "docs/intro") needs its parent directory created
           -- first.  Compute the parent by trimming at the last "/" (avoids the
           -- Path.dirname stdlib path helpers, which share the Some(0) crash bug).
-          let out_parent = parent_dir(out)
+          let out_parent = PathUtil.parent_dir(out)
           match Dir.mkdir_p(out_parent) do
           Err(e) -> Err("cannot create " ++ out_parent ++ ": " ++ fmt_err(e))
           Ok(_) ->

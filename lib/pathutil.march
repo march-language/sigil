@@ -1,0 +1,42 @@
+-- Small string-path helpers shared by Build and Assets.  These deliberately
+-- avoid the stdlib `Path.dirname`/`Path.extension`/`Path.strip_extension`
+-- helpers, which crash at runtime on a `Some(0)` literal pattern; until that
+-- stdlib bug is fixed we compute the pieces directly here.
+--
+-- All functions BORROW their String arguments (they only read + concatenate)
+-- and return freshly-allocated results, so callers can use the inputs again.
+mod PathUtil do
+
+  -- Remove a single trailing "/" if present.
+  fn strip_trailing_slash(s : String) : String do
+    if String.ends_with(s, "/") do
+      String.slice_bytes(s, 0, String.byte_size(s) - 1)
+    else
+      s
+    end
+  end
+
+  -- Directory portion of a path (everything before the last "/"), or "." when
+  -- there is no separator and "/" for a root-level entry.
+  fn parent_dir(path : String) : String do
+    match String.last_index_of(path, "/") do
+    None    -> "."
+    Some(i) -> if i == 0 do "/" else String.slice_bytes(path, 0, i) end
+    end
+  end
+
+  -- Return `path` with the `root` prefix (plus separator) stripped, falling back
+  -- to the basename for a path that does not live under `root`.
+  --   rel_under("content", "content/docs/intro.md") == "docs/intro.md"
+  --   rel_under("static",  "/elsewhere/x.css")       == "x.css"
+  fn rel_under(root : String, path : String) : String do
+    let with_sep = strip_trailing_slash(root) ++ "/"
+    let plen     = String.byte_size(with_sep)
+    if String.starts_with(path, with_sep) do
+      String.slice_bytes(path, plen, String.byte_size(path) - plen)
+    else
+      Path.basename(path)
+    end
+  end
+
+end

@@ -56,9 +56,9 @@ mod Assets do
 
   pfn copy_file(root : String, dest_root : String, src : String) : Result(Unit, String) do
     -- Mirror the path relative to the static root into the output root.
-    let rel = rel_under(root, src)
+    let rel = PathUtil.rel_under(root, src)
     let dst = Path.join(dest_root, rel)
-    let dst_parent = parent_dir(dst)
+    let dst_parent = PathUtil.parent_dir(dst)
     match Dir.mkdir_p(dst_parent) do
     Err(e) -> Err("cannot create " ++ dst_parent ++ ": " ++ fmt_err(e))
     Ok(_) ->
@@ -70,34 +70,6 @@ mod Assets do
         Ok(_)  -> Ok(())
         end
       end
-    end
-  end
-
-  -- Return `src` with the `root` prefix (plus separator) stripped, falling back
-  -- to the basename for a path that is not under `root`.
-  pfn rel_under(root : String, src : String) : String do
-    let with_sep = strip_trailing_slash(root) ++ "/"
-    let plen     = String.byte_size(with_sep)
-    if String.starts_with(src, with_sep) do
-      String.slice_bytes(src, plen, String.byte_size(src) - plen)
-    else
-      Path.basename(src)
-    end
-  end
-
-  pfn strip_trailing_slash(s : String) : String do
-    if String.ends_with(s, "/") do
-      String.slice_bytes(s, 0, String.byte_size(s) - 1)
-    else
-      s
-    end
-  end
-
-  -- Directory portion of a path (everything before the last "/"), or "." if none.
-  pfn parent_dir(path : String) : String do
-    match String.last_index_of(path, "/") do
-    None    -> "."
-    Some(i) -> if i == 0 do "/" else String.slice_bytes(path, 0, i) end
     end
   end
 
