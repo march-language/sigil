@@ -8,7 +8,70 @@ mod MdBlock do
     if String.is_empty(src) do Nil
     else
       let lines = String.split(src, "\n")
-      List.reverse(go(lines, Nil, Nil))
+      -- Pre-pass: pull out link reference definitions ("[label]: url") so they
+      -- (a) don't render as paragraph text and (b) are available to resolve
+      -- [text][label] / [label][] / [label] references anywhere in the document.
+      match extract_link_defs(lines, Nil, Nil) do
+      (defs, content_lines) ->
+        List.reverse(go(content_lines, Nil, Nil, defs))
+      end
+    end
+  end
+
+  -- Split lines into (link reference definitions, remaining content lines).
+  -- Definition lines are removed from the content; they resolve references
+  -- regardless of order (a definition may follow its use).
+  pfn extract_link_defs(lines : List(String), defs_acc : List((String, String, String)), line_acc : List(String)) : (List((String, String, String)), List(String)) do
+    match lines do
+    Nil -> (List.reverse(defs_acc), List.reverse(line_acc))
+    Cons(line, rest) ->
+      match parse_link_def(line) do
+      Some(def) -> extract_link_defs(rest, Cons(def, defs_acc), line_acc)
+      None      -> extract_link_defs(rest, defs_acc, Cons(line, line_acc))
+      end
+    end
+  end
+
+  -- Parse one line as "[label]: dest" or "[label]: dest \"title\"", returning
+  -- (label, dest, title) or None.  Title quotes may be \"...\", '...', or (...).
+  pfn parse_link_def(line : String) : Option((String, String, String)) do
+    let t = String.trim(line)
+    if String.starts_with(t, "[") do
+      match String.split_first(t, "]:") do
+      None -> None
+      Some(parts) ->
+        match parts do
+        (lhs, rhs) ->
+          let label = String.slice_bytes(lhs, 1, String.byte_size(lhs) - 1)
+          let body  = String.trim(rhs)
+          if String.is_empty(label) || String.is_empty(body) do None
+          else
+            match String.split_first(body, " ") do
+            None -> Some((label, body, ""))
+            Some(dt) ->
+              match dt do
+              (dest, title_raw) ->
+                Some((label, String.trim(dest), strip_quotes(String.trim(title_raw))))
+              end
+            end
+          end
+        end
+      end
+    else None
+    end
+  end
+
+  -- Strip one matching pair of surrounding quotes: \"...\", '...', or (...).
+  pfn strip_quotes(s : String) : String do
+    let n = String.byte_size(s)
+    if n >= 2 do
+      let first = String.slice_bytes(s, 0, 1)
+      let last  = String.slice_bytes(s, n - 1, 1)
+      if (first == "\"" && last == "\"") || (first == "'" && last == "'") || (first == "(" && last == ")") do
+        String.slice_bytes(s, 1, n - 2)
+      else s
+      end
+    else s
     end
   end
 
@@ -19,39 +82,39 @@ mod MdBlock do
   --
   -- RC note: all three args are List(String) or List(Block) — no records.
   -- Each list is used at most once per branch before being passed to recursion.
-  pfn go(lines : List(String), para_acc : List(String), block_acc : List(Block)) : List(Block) do
+  pfn go(lines : List(String), para_acc : List(String), block_acc : List(Block), defs : List((String, String, String))) : List(Block) do
     match lines do
     Nil ->
-      flush_para(para_acc, block_acc)
+      flush_para(para_acc, block_acc, defs)
     Cons(line, rest) ->
       let trimmed = String.trim(line)
       if is_fence_open(trimmed) do
-        let flushed = flush_para(para_acc, block_acc)
+        let flushed = flush_para(para_acc, block_acc, defs)
         let fc   = fence_char(trimmed)
         let lang = fence_lang(trimmed)
         let (body, remaining) = collect_fence(rest, fc, Nil)
-        go(remaining, Nil, Cons(CodeBlock(lang, body), flushed))
+        go(remaining, Nil, Cons(CodeBlock(lang, body), flushed), defs)
       else if is_blockquote(trimmed) do
         -- M1 limitation: only the current (single) line is parsed as the blockquote content.
         -- Multi-line blockquotes (consecutive "> " lines merged) are not yet supported.
-        let flushed = flush_para(para_acc, block_acc)
+        let flushed = flush_para(para_acc, block_acc, defs)
         let stripped = strip_bq_prefix(trimmed)
-        let bq_inlines = MdInline.parse(stripped)
+        let bq_inlines = MdInline.parse_refs(stripped, defs)
         let inner = Cons(Para(bq_inlines), Nil)
-        go(rest, Nil, Cons(Quote(inner), flushed))
+        go(rest, Nil, Cons(Quote(inner), flushed), defs)
       else if is_ordered_item(trimmed) do
-        let flushed = flush_para(para_acc, block_acc)
+        let flushed = flush_para(para_acc, block_acc, defs)
         let start_num = ordered_item_number(trimmed)
-        let (items, remaining) = collect_ordered(Cons(line, rest), Nil)
-        go(remaining, Nil, Cons(OrdList(start_num, items), flushed))
+        let (items, remaining) = collect_ordered(Cons(line, rest), Nil, defs)
+        go(remaining, Nil, Cons(OrdList(start_num, items), flushed), defs)
       else if is_bullet_item(trimmed) do
-        let flushed = flush_para(para_acc, block_acc)
+        let flushed = flush_para(para_acc, block_acc, defs)
         let base0 = leading_indent(line)
         match collect_bullet_lines(Cons(line, rest), Nil) do
         (rows, remaining) ->
-          match build_items(rows, base0) do
+          match build_items(rows, base0, defs) do
           (items, _leftover) ->
-            go(remaining, Nil, Cons(BulletList(items), flushed))
+            go(remaining, Nil, Cons(BulletList(items), flushed), defs)
           end
         end
       else if is_table_row(trimmed) do
@@ -60,20 +123,20 @@ mod MdBlock do
         Cons(sep_line, data_lines) ->
           let sep_trimmed = String.trim(sep_line)
           if is_table_separator(sep_trimmed) do
-            let flushed = flush_para(para_acc, block_acc)
-            let headers = map_parse_cells(split_table_row(trimmed))
-            let (data_rows, remaining) = collect_table_rows(data_lines, Nil)
-            go(remaining, Nil, Cons(Table(headers, data_rows), flushed))
+            let flushed = flush_para(para_acc, block_acc, defs)
+            let headers = map_parse_cells(split_table_row(trimmed), defs)
+            let (data_rows, remaining) = collect_table_rows(data_lines, Nil, defs)
+            go(remaining, Nil, Cons(Table(headers, data_rows), flushed), defs)
           else
-            go(rest, Cons(line, para_acc), block_acc)
+            go(rest, Cons(line, para_acc), block_acc, defs)
           end
         _ ->
-          go(rest, Cons(line, para_acc), block_acc)
+          go(rest, Cons(line, para_acc), block_acc, defs)
         end
       else if is_heading(trimmed) do
-        let flushed = flush_para(para_acc, block_acc)
-        let h = parse_heading(trimmed)
-        go(rest, Nil, Cons(h, flushed))
+        let flushed = flush_para(para_acc, block_acc, defs)
+        let h = parse_heading(trimmed, defs)
+        go(rest, Nil, Cons(h, flushed), defs)
       else if is_setext_underline(trimmed) do
         -- A line of "=" (h1) or "-" (h2) immediately under paragraph text is a
         -- setext heading; with no preceding paragraph, "---" is a thematic break
@@ -81,25 +144,25 @@ mod MdBlock do
         match para_acc do
         Nil ->
           if only_char(trimmed, "-") do
-            go(rest, Nil, Cons(ThematicBreak, block_acc))
+            go(rest, Nil, Cons(ThematicBreak, block_acc), defs)
           else
-            go(rest, Cons(line, Nil), block_acc)
+            go(rest, Cons(line, Nil), block_acc, defs)
           end
         Cons(h, t) ->
           let level   = setext_level(trimmed)
           let raw     = String.join(List.reverse(Cons(h, t)), " ")
           let anchor  = make_anchor(raw)
-          let inlines = MdInline.parse(raw)
-          go(rest, Nil, Cons(Heading(level, anchor, inlines), block_acc))
+          let inlines = MdInline.parse_refs(raw, defs)
+          go(rest, Nil, Cons(Heading(level, anchor, inlines), block_acc), defs)
         end
       else if is_thematic_break(trimmed) do
-        let flushed = flush_para(para_acc, block_acc)
-        go(rest, Nil, Cons(ThematicBreak, flushed))
+        let flushed = flush_para(para_acc, block_acc, defs)
+        go(rest, Nil, Cons(ThematicBreak, flushed), defs)
       else if String.is_empty(trimmed) do
-        let flushed = flush_para(para_acc, block_acc)
-        go(rest, Nil, flushed)
+        let flushed = flush_para(para_acc, block_acc, defs)
+        go(rest, Nil, flushed, defs)
       else
-        go(rest, Cons(line, para_acc), block_acc)
+        go(rest, Cons(line, para_acc), block_acc, defs)
       end end end end end end end end end
     end
   end
@@ -150,13 +213,13 @@ mod MdBlock do
 
   -- Phase 2: build list items at indentation `base` from the flat rows; rows
   -- indented deeper than an item become a nested BulletList inside it.
-  pfn build_items(rows : List((Int, String)), base : Int) : (List(List(Block)), List((Int, String))) do
-    build_items_acc(rows, base, Nil)
+  pfn build_items(rows : List((Int, String)), base : Int, defs : List((String, String, String))) : (List(List(Block)), List((Int, String))) do
+    build_items_acc(rows, base, Nil, defs)
   end
 
   -- Tail-recursive accumulator form (the self-recursion stays in tail position;
   -- March rejects a self-recursive call in a match scrutinee).
-  pfn build_items_acc(rows : List((Int, String)), base : Int, acc : List(List(Block))) : (List(List(Block)), List((Int, String))) do
+  pfn build_items_acc(rows : List((Int, String)), base : Int, acc : List(List(Block)), defs : List((String, String, String))) : (List(List(Block)), List((Int, String))) do
     match rows do
     Nil -> (List.reverse(acc), Nil)
     Cons(row, rest_rows) ->
@@ -165,11 +228,11 @@ mod MdBlock do
         if ind < base do
           (List.reverse(acc), Cons((ind, text), rest_rows))
         else
-          let para = Para(MdInline.parse(text))
-          match build_children(rest_rows, base) do
+          let para = Para(MdInline.parse_refs(text, defs))
+          match build_children(rest_rows, base, defs) do
           (children, rest_after) ->
             let item_blocks = Cons(para, children)
-            build_items_acc(rest_after, base, Cons(item_blocks, acc))
+            build_items_acc(rest_after, base, Cons(item_blocks, acc), defs)
           end
         end
       end
@@ -178,14 +241,14 @@ mod MdBlock do
 
   -- If the next rows are indented deeper than `parent_base`, build them into a
   -- nested BulletList block; otherwise no children.
-  pfn build_children(rows : List((Int, String)), parent_base : Int) : (List(Block), List((Int, String))) do
+  pfn build_children(rows : List((Int, String)), parent_base : Int, defs : List((String, String, String))) : (List(Block), List((Int, String))) do
     match rows do
     Nil -> (Nil, Nil)
     Cons(row, rest_rows) ->
       match row do
       (ind, text) ->
         if ind > parent_base do
-          match build_items(Cons((ind, text), rest_rows), ind) do
+          match build_items(Cons((ind, text), rest_rows), ind, defs) do
           (items, rest) -> (Cons(BulletList(items), Nil), rest)
           end
         else
@@ -269,16 +332,16 @@ mod MdBlock do
   end
 
   -- Collect consecutive ordered list items.
-  pfn collect_ordered(lines : List(String), acc : List(List(Block))) : (List(List(Block)), List(String)) do
+  pfn collect_ordered(lines : List(String), acc : List(List(Block)), defs : List((String, String, String))) : (List(List(Block)), List(String)) do
     match lines do
     Nil -> (List.reverse(acc), Nil)
     Cons(line, rest) ->
       let t = String.trim(line)
       if is_ordered_item(t) do
         let item_src = strip_ordered_prefix(String.trim(line))
-        let inlines = MdInline.parse(item_src)
+        let inlines = MdInline.parse_refs(item_src, defs)
         let item_blocks = Cons(Para(inlines), Nil)
-        collect_ordered(rest, Cons(item_blocks, acc))
+        collect_ordered(rest, Cons(item_blocks, acc), defs)
       else
         (List.reverse(acc), lines)
       end
@@ -344,22 +407,22 @@ mod MdBlock do
   end
 
   -- Map a list of cell strings through MdInline.parse.
-  pfn map_parse_cells(cells : List(String)) : List(List(Inline)) do
+  pfn map_parse_cells(cells : List(String), defs : List((String, String, String))) : List(List(Inline)) do
     match cells do
     Nil -> Nil
-    Cons(c, rest) -> Cons(MdInline.parse(String.trim(c)), map_parse_cells(rest))
+    Cons(c, rest) -> Cons(MdInline.parse_refs(String.trim(c), defs), map_parse_cells(rest, defs))
     end
   end
 
   -- Collect consecutive table rows (lines that contain `|`).
-  pfn collect_table_rows(lines : List(String), acc : List(List(List(Inline)))) : (List(List(List(Inline))), List(String)) do
+  pfn collect_table_rows(lines : List(String), acc : List(List(List(Inline))), defs : List((String, String, String))) : (List(List(List(Inline))), List(String)) do
     match lines do
     Nil -> (List.reverse(acc), Nil)
     Cons(line, rest) ->
       let t = String.trim(line)
       if is_table_row(t) do
-        let row = map_parse_cells(split_table_row(t))
-        collect_table_rows(rest, Cons(row, acc))
+        let row = map_parse_cells(split_table_row(t), defs)
+        collect_table_rows(rest, Cons(row, acc), defs)
       else
         (List.reverse(acc), lines)
       end
@@ -409,7 +472,7 @@ mod MdBlock do
   end
 
   -- Emit a Para block from accumulated lines if non-empty.
-  pfn flush_para(para_acc : List(String), block_acc : List(Block)) : List(Block) do
+  pfn flush_para(para_acc : List(String), block_acc : List(Block), defs : List((String, String, String))) : List(Block) do
     match para_acc do
     Nil -> block_acc
     _   ->
@@ -418,7 +481,7 @@ mod MdBlock do
       -- leave a raw newline in the <p> source.  (Hard breaks — two trailing spaces
       -- → <br> — are not yet supported.)
       let content = String.join(List.reverse(para_acc), " ")
-      let inlines = MdInline.parse(content)
+      let inlines = MdInline.parse_refs(content, defs)
       Cons(Para(inlines), block_acc)
     end
   end
@@ -436,14 +499,14 @@ mod MdBlock do
   end
 
   -- Parse an ATX heading line into a Heading block.
-  pfn parse_heading(line : String) : Block do
+  pfn parse_heading(line : String, defs : List((String, String, String))) : Block do
     let level = count_hashes(line, 0)
     let clamped = if level < 1 do 1 else if level > 6 do 6 else level end end
     -- Drop the hash prefix; trim leading/trailing space from the content
     let n = String.byte_size(line)
     let raw = String.trim(String.slice_bytes(line, clamped, n - clamped))
     let anchor = make_anchor(raw)
-    let inlines = MdInline.parse(raw)
+    let inlines = MdInline.parse_refs(raw, defs)
     Heading(clamped, anchor, inlines)
   end
 

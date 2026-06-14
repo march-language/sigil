@@ -1,11 +1,43 @@
 mod MdInline do
 
-  -- Parse a string into a list of inline nodes.
-  -- Uses byte-level scanning.
+  -- Parse a string into a list of inline nodes, with no reference-link
+  -- definitions in scope.  Uses byte-level scanning.
   fn parse(s : String) : List(Inline) do
+    parse_refs(s, Nil)
+  end
+
+  -- Parse with a link-reference-definition map (label, url, title) so that
+  -- [text][label], [label][], and [label] reference links resolve.  MdBlock
+  -- collects the document's definitions and threads them in here; callers with
+  -- none use `parse` (an empty map).  Labels match case-insensitively.
+  fn parse_refs(s : String, defs : List((String, String, String))) : List(Inline) do
     let n = String.byte_size(s)
     if n == 0 do Nil
-    else List.reverse(scan_run(s, n, 0, 0, Nil))
+    else List.reverse(scan_run(s, n, 0, 0, Nil, defs))
+    end
+  end
+
+  -- Normalise a reference label for matching: trim + lowercase.  (CommonMark
+  -- also collapses internal whitespace runs; not done here.)
+  pfn normalize_label(s : String) : String do
+    String.to_lowercase(String.trim(s))
+  end
+
+  -- Look up a reference label in the definitions map, returning (url, title).
+  pfn lookup_ref(defs : List((String, String, String)), label : String) : Option((String, String)) do
+    lookup_ref_go(defs, normalize_label(label))
+  end
+
+  pfn lookup_ref_go(defs : List((String, String, String)), key : String) : Option((String, String)) do
+    match defs do
+    Nil -> None
+    Cons(entry, rest) ->
+      match entry do
+      (lbl, url, title) ->
+        if normalize_label(lbl) == key do Some((url, title))
+        else lookup_ref_go(rest, key)
+        end
+      end
     end
   end
 
@@ -51,7 +83,7 @@ mod MdInline do
   -- pos: current scan position.
   -- text_start: start of the current plain-text run.
   -- acc: reversed result list (call List.reverse at the end).
-  pfn scan_run(s : String, n : Int, pos : Int, text_start : Int, acc : List(Inline)) : List(Inline) do
+  pfn scan_run(s : String, n : Int, pos : Int, text_start : Int, acc : List(Inline), defs : List((String, String, String))) : List(Inline) do
     if pos >= n do
       let tail_len = n - text_start
       if tail_len == 0 do acc
@@ -62,20 +94,20 @@ mod MdInline do
       if ch == "`" do
         match find_byte(s, n, pos + 1, "`") do
         None ->
-          scan_run(s, n, pos + 1, text_start, acc)
+          scan_run(s, n, pos + 1, text_start, acc, defs)
         Some(btick_close) ->
           let bt_acc = flush_text(s, text_start, pos, acc)
           let bt_code = String.slice_bytes(s, pos + 1, btick_close - pos - 1)
-          scan_run(s, n, btick_close + 1, btick_close + 1, Cons(Code(bt_code), bt_acc))
+          scan_run(s, n, btick_close + 1, btick_close + 1, Cons(Code(bt_code), bt_acc), defs)
         end
       else if ch == "!" && pos + 1 < n && String.slice_bytes(s, pos + 1, 1) == "[" do
         -- Possible image: ![alt](url) or ![alt](url "title")
         match find_byte(s, n, pos + 2, "]") do
-        None -> scan_run(s, n, pos + 1, text_start, acc)
+        None -> scan_run(s, n, pos + 1, text_start, acc, defs)
         Some(img_close) ->
           if img_close + 1 < n && String.slice_bytes(s, img_close + 1, 1) == "(" do
             match find_byte(s, n, img_close + 2, ")") do
-            None -> scan_run(s, n, pos + 1, text_start, acc)
+            None -> scan_run(s, n, pos + 1, text_start, acc, defs)
             Some(img_paren_close) ->
               let img_alt = String.slice_bytes(s, pos + 2, img_close - pos - 2)
               let img_dest_raw = String.slice_bytes(s, img_close + 2, img_paren_close - img_close - 2)
@@ -83,32 +115,67 @@ mod MdInline do
               let (img_url, img_title) = parse_link_dest(img_dest_raw)
               let img_acc = flush_text(s, text_start, pos, acc)
               scan_run(s, n, img_paren_close + 1, img_paren_close + 1,
-                Cons(Image(img_url, img_alt, img_title), img_acc))
+                Cons(Image(img_url, img_alt, img_title), img_acc), defs)
             end
           else
-            scan_run(s, n, pos + 1, text_start, acc)
+            scan_run(s, n, pos + 1, text_start, acc, defs)
           end
         end
       else if ch == "[" do
-        -- Possible link: [text](url) or [text](url "title")
+        -- Link: inline [text](url), or a reference [text][label] / [label][] /
+        -- [label] resolved against the definitions map.
         match find_byte(s, n, pos + 1, "]") do
-        None -> scan_run(s, n, pos + 1, text_start, acc)
+        None -> scan_run(s, n, pos + 1, text_start, acc, defs)
         Some(link_close) ->
-          if link_close + 1 < n && String.slice_bytes(s, link_close + 1, 1) == "(" do
+          let link_text = String.slice_bytes(s, pos + 1, link_close - pos - 1)
+          let after = link_close + 1
+          let next_ch = if after < n do String.slice_bytes(s, after, 1) else "" end
+          if next_ch == "(" do
             match find_byte(s, n, link_close + 2, ")") do
-            None -> scan_run(s, n, pos + 1, text_start, acc)
+            None -> scan_run(s, n, pos + 1, text_start, acc, defs)
             Some(link_paren_close) ->
-              let link_text = String.slice_bytes(s, pos + 1, link_close - pos - 1)
               let link_dest_raw = String.slice_bytes(s, link_close + 2, link_paren_close - link_close - 2)
               -- Single-use tuple destructure avoids double-ownership of the pair.
               let (link_url, link_title) = parse_link_dest(link_dest_raw)
               let link_kids = parse_span(link_text)
               let link_acc = flush_text(s, text_start, pos, acc)
               scan_run(s, n, link_paren_close + 1, link_paren_close + 1,
-                Cons(Link(link_url, link_title, link_kids), link_acc))
+                Cons(Link(link_url, link_title, link_kids), link_acc), defs)
             end
           else
-            scan_run(s, n, pos + 1, text_start, acc)
+            if next_ch == "[" do
+              -- Full [text][label] or collapsed [text][] reference.
+              match find_byte(s, n, after + 1, "]") do
+              None -> scan_run(s, n, pos + 1, text_start, acc, defs)
+              Some(lbl_close) ->
+                let lbl_raw = String.slice_bytes(s, after + 1, lbl_close - after - 1)
+                let label = if String.is_empty(lbl_raw) do link_text else lbl_raw end
+                match lookup_ref(defs, label) do
+                None -> scan_run(s, n, pos + 1, text_start, acc, defs)
+                Some(pair) ->
+                  match pair do
+                  (ref_url, ref_title) ->
+                    let ref_kids = parse_span(link_text)
+                    let ref_acc  = flush_text(s, text_start, pos, acc)
+                    scan_run(s, n, lbl_close + 1, lbl_close + 1,
+                      Cons(Link(ref_url, ref_title, ref_kids), ref_acc), defs)
+                  end
+                end
+              end
+            else
+              -- Shortcut [label] reference.
+              match lookup_ref(defs, link_text) do
+              None -> scan_run(s, n, pos + 1, text_start, acc, defs)
+              Some(pair) ->
+                match pair do
+                (sc_url, sc_title) ->
+                  let sc_kids = parse_span(link_text)
+                  let sc_acc  = flush_text(s, text_start, pos, acc)
+                  scan_run(s, n, link_close + 1, link_close + 1,
+                    Cons(Link(sc_url, sc_title, sc_kids), sc_acc), defs)
+                end
+              end
+            end
           end
         end
       else if ch == "*" do
@@ -118,21 +185,21 @@ mod MdInline do
           end
         if next_star do
           match find_seq(s, n, pos + 2, "**", 2) do
-          None    -> scan_run(s, n, pos + 1, text_start, acc)
+          None    -> scan_run(s, n, pos + 1, text_start, acc, defs)
           Some(st_close) ->
             let st_acc = flush_text(s, text_start, pos, acc)
             let st_body = String.slice_bytes(s, pos + 2, st_close - pos - 2)
             let st_kids = parse_span(st_body)
-            scan_run(s, n, st_close + 2, st_close + 2, Cons(Strong(st_kids), st_acc))
+            scan_run(s, n, st_close + 2, st_close + 2, Cons(Strong(st_kids), st_acc), defs)
           end
         else
           match find_byte_unesc(s, n, pos + 1, "*") do
-          None    -> scan_run(s, n, pos + 1, text_start, acc)
+          None    -> scan_run(s, n, pos + 1, text_start, acc, defs)
           Some(em_close) ->
             let em_acc = flush_text(s, text_start, pos, acc)
             let em_body = String.slice_bytes(s, pos + 1, em_close - pos - 1)
             let em_kids = parse_span(em_body)
-            scan_run(s, n, em_close + 1, em_close + 1, Cons(Emph(em_kids), em_acc))
+            scan_run(s, n, em_close + 1, em_close + 1, Cons(Emph(em_kids), em_acc), defs)
           end
         end
       else if ch == "_" do
@@ -143,12 +210,12 @@ mod MdInline do
           end
         if next_under do
           match find_seq(s, n, pos + 2, "__", 2) do
-          None    -> scan_run(s, n, pos + 1, text_start, acc)
+          None    -> scan_run(s, n, pos + 1, text_start, acc, defs)
           Some(us_close) ->
             let us_acc = flush_text(s, text_start, pos, acc)
             let us_body = String.slice_bytes(s, pos + 2, us_close - pos - 2)
             let us_kids = parse_span(us_body)
-            scan_run(s, n, us_close + 2, us_close + 2, Cons(Strong(us_kids), us_acc))
+            scan_run(s, n, us_close + 2, us_close + 2, Cons(Strong(us_kids), us_acc), defs)
           end
         else
           -- Underscore emphasis needs a word boundary: an opener preceded by an
@@ -156,30 +223,30 @@ mod MdInline do
           -- Asterisk emphasis has no such restriction.
           let prev_alnum = if pos > 0 do is_alnum(String.slice_bytes(s, pos - 1, 1)) else false end
           if prev_alnum do
-            scan_run(s, n, pos + 1, text_start, acc)
+            scan_run(s, n, pos + 1, text_start, acc, defs)
           else
             match find_us_close(s, n, pos + 1) do
-            None    -> scan_run(s, n, pos + 1, text_start, acc)
+            None    -> scan_run(s, n, pos + 1, text_start, acc, defs)
             Some(ue_close) ->
               let ue_acc = flush_text(s, text_start, pos, acc)
               let ue_body = String.slice_bytes(s, pos + 1, ue_close - pos - 1)
               let ue_kids = parse_span(ue_body)
-              scan_run(s, n, ue_close + 1, ue_close + 1, Cons(Emph(ue_kids), ue_acc))
+              scan_run(s, n, ue_close + 1, ue_close + 1, Cons(Emph(ue_kids), ue_acc), defs)
             end
           end
         end
       else if ch == "<" do
         -- Autolink: <https://…>, <mailto:…>, or a bare <email@host>.
         match find_byte(s, n, pos + 1, ">") do
-        None -> scan_run(s, n, pos + 1, text_start, acc)
+        None -> scan_run(s, n, pos + 1, text_start, acc, defs)
         Some(gt) ->
           let al_url_in = String.slice_bytes(s, pos + 1, gt - pos - 1)
           let al_text   = String.slice_bytes(s, pos + 1, gt - pos - 1)
           match autolink_url(al_url_in) do
-          None -> scan_run(s, n, pos + 1, text_start, acc)
+          None -> scan_run(s, n, pos + 1, text_start, acc, defs)
           Some(al_url) ->
             let al_acc = flush_text(s, text_start, pos, acc)
-            scan_run(s, n, gt + 1, gt + 1, Cons(Link(al_url, "", Cons(Md.Inline.Text(al_text), Nil)), al_acc))
+            scan_run(s, n, gt + 1, gt + 1, Cons(Link(al_url, "", Cons(Md.Inline.Text(al_text), Nil)), al_acc), defs)
           end
         end
       else if ch == "\\" && pos + 1 < n && is_escapable(String.slice_bytes(s, pos + 1, 1)) do
@@ -187,9 +254,9 @@ mod MdInline do
         -- would otherwise start (e.g. \* is a literal asterisk, not emphasis).
         let esc_acc  = flush_text(s, text_start, pos, acc)
         let esc_char = String.slice_bytes(s, pos + 1, 1)
-        scan_run(s, n, pos + 2, pos + 2, Cons(Md.Inline.Text(esc_char), esc_acc))
+        scan_run(s, n, pos + 2, pos + 2, Cons(Md.Inline.Text(esc_char), esc_acc), defs)
       else
-        scan_run(s, n, pos + 1, text_start, acc)
+        scan_run(s, n, pos + 1, text_start, acc, defs)
       end end end end end end end
     end
   end

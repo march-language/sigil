@@ -212,6 +212,57 @@ mod TestMd do
     end
   end
 
+  describe "Markdown reference links" do
+    test "shortcut reference resolves against a definition" do
+      let html = IOList.to_string(MdRender.render(MdBlock.parse("[foo]\n\n[foo]: /url")))
+      assert (String.contains(html, "<a href=\"/url\">foo</a>"))
+    end
+    test "full reference uses the link text, not the label" do
+      let html = IOList.to_string(MdRender.render(MdBlock.parse("[the text][foo]\n\n[foo]: /url")))
+      assert (String.contains(html, "<a href=\"/url\">the text</a>"))
+    end
+    test "collapsed reference uses the label as text" do
+      let html = IOList.to_string(MdRender.render(MdBlock.parse("[foo][]\n\n[foo]: /url")))
+      assert (String.contains(html, "<a href=\"/url\">foo</a>"))
+    end
+    test "definition title becomes a title attribute" do
+      let html = IOList.to_string(MdRender.render(MdBlock.parse("[foo]\n\n[foo]: /url \"A Title\"")))
+      assert (String.contains(html, "href=\"/url\""))
+      assert (String.contains(html, "title=\"A Title\""))
+    end
+    test "labels match case-insensitively" do
+      let html = IOList.to_string(MdRender.render(MdBlock.parse("[FOO]\n\n[foo]: /url")))
+      assert (String.contains(html, "<a href=\"/url\">FOO</a>"))
+    end
+    test "undefined reference stays literal" do
+      let html = IOList.to_string(MdRender.render(MdBlock.parse("a [bar] b")))
+      assert (not (String.contains(html, "<a ")))
+      assert (String.contains(html, "[bar]"))
+    end
+    test "definition line does not render as content" do
+      let html = IOList.to_string(MdRender.render(MdBlock.parse("[foo]: /url \"t\"")))
+      assert (not (String.contains(html, "[foo]")))
+      assert (not (String.contains(html, "/url")))
+    end
+    test "definition may appear before its use" do
+      let html = IOList.to_string(MdRender.render(MdBlock.parse("[foo]: /url\n\nsee [foo] here")))
+      assert (String.contains(html, "<a href=\"/url\">foo</a>"))
+    end
+    test "reference resolves inside a heading" do
+      let html = IOList.to_string(MdRender.render(MdBlock.parse("# see [foo]\n\n[foo]: /url")))
+      assert (String.contains(html, "<a href=\"/url\">foo</a>"))
+    end
+    test "reference resolves inside a list item" do
+      let html = IOList.to_string(MdRender.render(MdBlock.parse("- a [foo] b\n\n[foo]: /url")))
+      assert (String.contains(html, "<a href=\"/url\">foo</a>"))
+    end
+    test "inline link still wins over reference syntax" do
+      let html = IOList.to_string(MdRender.render(MdBlock.parse("[x](/inline)\n\n[x]: /ref")))
+      assert (String.contains(html, "href=\"/inline\""))
+      assert (not (String.contains(html, "/ref")))
+    end
+  end
+
   describe "Markdown emphasis flanking" do
     test "intra-word underscores stay literal (snake_case)" do
       let html = IOList.to_string(MdRender.render(MdBlock.parse("call my_var_name now")))
