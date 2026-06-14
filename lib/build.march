@@ -20,10 +20,13 @@ mod Build do
     to_string(e)
   end
 
-  -- Path.extension uses a `Some(0)` literal pattern which crashes at runtime.
-  -- Use String.ends_with instead until the stdlib bug is fixed.
-  pfn is_md(path : String) : Bool do
-    String.ends_with(path, ".md")
+  -- A content file is Markdown (".md") or a Scroll notebook (".scrollmd"): a
+  -- Scroll notebook is plain Markdown with fenced `march` code cells, so the
+  -- same parser/renderer handles both (cells become highlightable code blocks).
+  -- Path.extension uses a `Some(0)` literal pattern which crashes at runtime,
+  -- so use String.ends_with until that stdlib bug is fixed.
+  pfn is_content(path : String) : Bool do
+    String.ends_with(path, ".md") || String.ends_with(path, ".scrollmd")
   end
 
   -- Recursively collect every `.md` file under `dir` (depth-first), returning
@@ -42,7 +45,7 @@ mod Build do
   --
   -- RC note: this is a tail-recursive worklist walk over a single accumulator,
   -- mirroring the isolation-verified minimal walker; `p` is used at most twice
-  -- per iteration (Dir.exists + Dir.list_full, or is_md + Cons), which Perceus
+  -- per iteration (Dir.exists + Dir.list_full, or is_content + Cons), which Perceus
   -- handles reliably for a borrowed-then-consumed parameter.
   fn collect_md(dir : String) : List(String) do
     match Dir.list_full(dir) do
@@ -59,29 +62,33 @@ mod Build do
         let sub = match Dir.list_full(p) do Ok(es) -> es | Err(_) -> Nil end
         collect_md_walk(List.append(sub, rest), acc)
       else
-        if is_md(p) do collect_md_walk(rest, Cons(p, acc))
+        if is_content(p) do collect_md_walk(rest, Cons(p, acc))
         else collect_md_walk(rest, acc) end
       end
     end
     end
   end
 
-  -- Strip a trailing ".md" (3 bytes) if present.
-  pfn drop_md_ext(s : String) : String do
-    if String.ends_with(s, ".md") do
+  -- Strip a trailing content extension: ".scrollmd" (9 bytes) or ".md" (3 bytes).
+  pfn drop_content_ext(s : String) : String do
+    if String.ends_with(s, ".scrollmd") do
+      String.slice_bytes(s, 0, String.byte_size(s) - 9)
+    else if String.ends_with(s, ".md") do
       String.slice_bytes(s, 0, String.byte_size(s) - 3)
     else
       s
-    end
+    end end
   end
 
-  -- Compute a root-relative slug that mirrors the source tree, with ".md" removed.
-  --   rel_slug("content", "content/hello.md")      == "hello"
-  --   rel_slug("content", "content/docs/intro.md") == "docs/intro"
+  -- Compute a root-relative slug that mirrors the source tree, with the content
+  -- extension (".md" / ".scrollmd") removed.
+  --   rel_slug("content", "content/hello.md")        == "hello"
+  --   rel_slug("content", "content/docs/intro.md")   == "docs/intro"
+  --   rel_slug("content", "content/notebook.scrollmd") == "notebook"
   -- A path that does not live under content_root falls back to its basename
   -- (preserving the old flat behaviour for stray inputs).
   fn rel_slug(content_root : String, src : String) : String do
-    drop_md_ext(PathUtil.rel_under(content_root, src))
+    drop_content_ext(PathUtil.rel_under(content_root, src))
   end
 
   -- Apply a layout. Explicit let-bindings keep intermediate closure liveness

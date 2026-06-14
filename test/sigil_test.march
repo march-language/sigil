@@ -47,6 +47,22 @@ mod TestSigil do
       let _ = Dir.rm_rf(tmp)
     end
 
+    test "scroll notebook (.scrollmd) builds to HTML with a march code block" do
+      let tmp = "/tmp/sigil_scroll_" ++ to_string(System.monotonic_time())
+      let content_dir = Path.join(tmp, "content")
+      let output_dir  = Path.join(tmp, "out")
+      let _ = Dir.mkdir_p(content_dir)
+      let _ = File.write(Path.join(content_dir, "notebook.scrollmd"),
+                         "# Notebook\n\n```march\nlet x = 6 * 7\n```")
+      let site = { content_dir = content_dir, output_dir = output_dir, static_dir = "/tmp/no_static", title = "", base_url = "" }
+      let _ = Build.run(site)
+      let html = match File.read(Path.join(output_dir, "notebook.html")) do
+                 Ok(s) -> s | Err(_) -> "" end
+      assert (String.contains(html, "<h1"))
+      assert (String.contains(html, "class=\"language-march\""))
+      let _ = Dir.rm_rf(tmp)
+    end
+
     test "output is a full html document" do
       let tmp = "/tmp/sigil_doc_" ++ to_string(System.monotonic_time())
       let content_dir = Path.join(tmp, "content")
@@ -1146,6 +1162,10 @@ mod TestSigil do
     end
     test "path outside root falls back to basename" do
       assert (Build.rel_slug("content", "/elsewhere/x.md") == "x")
+    end
+    test "scroll notebook extension is stripped" do
+      assert (Build.rel_slug("content", "content/notebook.scrollmd") == "notebook")
+      assert (Build.rel_slug("content", "content/docs/nb.scrollmd") == "docs/nb")
     end
   end
 

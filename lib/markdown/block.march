@@ -440,9 +440,13 @@ mod MdBlock do
   end
 
   -- Get the language tag from a fence opener (everything after the opening ```).
+  -- Scroll notebooks tag cells `march` (runnable) and `march:server` (long-running);
+  -- for static rendering both are just March code, so normalise any `march:*`
+  -- variant to `march` (so it highlights as a single language-march block).
   pfn fence_lang(line : String) : String do
     let n = String.byte_size(line)
-    String.trim(String.slice_bytes(line, 3, n - 3))
+    let raw = String.trim(String.slice_bytes(line, 3, n - 3))
+    if String.starts_with(raw, "march:") do "march" else raw end
   end
 
   -- Collect lines until a closing fence (line of 3+ fence_char, nothing else).

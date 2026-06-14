@@ -263,6 +263,22 @@ mod TestMd do
     end
   end
 
+  describe "Scroll notebook code fences" do
+    test "march fence renders as language-march" do
+      let html = IOList.to_string(MdRender.render(MdBlock.parse("```march\nlet x = 6 * 7\n```")))
+      assert (String.contains(html, "class=\"language-march\""))
+    end
+    test "march:server fence normalizes to language-march" do
+      let html = IOList.to_string(MdRender.render(MdBlock.parse("```march:server\nHttpServer.start(3000)\n```")))
+      assert (String.contains(html, "class=\"language-march\""))
+      assert (not (String.contains(html, "march:server")))
+    end
+    test "other languages keep their tag" do
+      let html = IOList.to_string(MdRender.render(MdBlock.parse("```python\nx = 1\n```")))
+      assert (String.contains(html, "class=\"language-python\""))
+    end
+  end
+
   describe "Markdown emphasis flanking" do
     test "intra-word underscores stay literal (snake_case)" do
       let html = IOList.to_string(MdRender.render(MdBlock.parse("call my_var_name now")))
