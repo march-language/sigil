@@ -9,8 +9,8 @@ mod Config do
   }
 
   fn default() : Site do
-    { content_dir = "content", output_dir = "out", static_dir = "static",
-      title = "My Site", base_url = "" }
+    { content_dir: "content", output_dir: "out", static_dir: "static",
+      title: "My Site", base_url: "" }
   end
 
   -- Accessors — avoid direct record field access across modules (Perceus RC safety).

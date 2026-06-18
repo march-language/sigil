@@ -142,8 +142,8 @@ mod Watcher do
     if changed do
       let output_dir = get_output_dir()
       let static_dir = match System.env("SIGIL_STATIC_DIR") do Some(d) -> d | None -> "static" end
-      let site = { content_dir = content_dir, output_dir = output_dir, static_dir = static_dir,
-                   title = "", base_url = "" }
+      let site = { content_dir: content_dir, output_dir: output_dir, static_dir: static_dir,
+                   title: "", base_url: "" }
       match Build.run(site) do
       Err(msg) ->
         println("[sigil] build error: " ++ msg)

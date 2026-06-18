@@ -59,8 +59,8 @@ mod Ssg do
   fn parse_flags(args : List(String), content_dir : String, output_dir : String, static_dir : String, title : String, base_url : String) : Result(Config.Site, String) do
     match args do
     Nil ->
-      Ok({ content_dir = content_dir, output_dir = output_dir, static_dir = static_dir,
-           title = title, base_url = base_url })
+      Ok({ content_dir: content_dir, output_dir: output_dir, static_dir: static_dir,
+           title: title, base_url: base_url })
     Cons("--content-dir", Cons(val, rest)) ->
       parse_flags(rest, val, output_dir, static_dir, title, base_url)
     Cons("--output-dir", Cons(val, rest)) ->

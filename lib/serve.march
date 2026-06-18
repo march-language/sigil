@@ -110,8 +110,8 @@ mod Serve do
     let _ = System.put_env("SIGIL_OUTPUT_DIR", output_dir)
     let _ = System.put_env("SIGIL_STATIC_DIR", static_dir)
     let _ = System.put_env("SIGIL_CONTENT_DIR", content_dir)
-    let build_site = { content_dir = content_dir, output_dir = output_dir, static_dir = static_dir,
-                       title = "", base_url = "" }
+    let build_site = { content_dir: content_dir, output_dir: output_dir, static_dir: static_dir,
+                       title: "", base_url: "" }
     let _ = Build.run(build_site)
     println("[sigil] built")
     -- Zero-capture lambda: fn _ -> Watcher.watch_env() captures no heap values.

@@ -36,15 +36,15 @@ mod SiteConfig do
     if File.exists(path) do
       match File.read(path) do
       Err(_) ->
-        Ok({ content_dir = def_content, output_dir = def_output, static_dir = def_static,
-             title = def_title, base_url = def_base })
+        Ok({ content_dir: def_content, output_dir: def_output, static_dir: def_static,
+             title: def_title, base_url: def_base })
       Ok(src) ->
         let lines = String.split(src, "\n")
         Ok(scan(lines, "", def_content, def_output, def_static, def_title, def_base))
       end
     else
-      Ok({ content_dir = def_content, output_dir = def_output, static_dir = def_static,
-           title = def_title, base_url = def_base })
+      Ok({ content_dir: def_content, output_dir: def_output, static_dir: def_static,
+           title: def_title, base_url: def_base })
     end
   end
 
@@ -56,8 +56,8 @@ mod SiteConfig do
            title : String, base_url : String) : Config.Site do
     match lines do
     Nil ->
-      { content_dir = content_dir, output_dir = output_dir, static_dir = static_dir,
-        title = title, base_url = base_url }
+      { content_dir: content_dir, output_dir: output_dir, static_dir: static_dir,
+        title: title, base_url: base_url }
     Cons(line, rest) -> do
       let t = String.trim(line)
       if is_header(t) do

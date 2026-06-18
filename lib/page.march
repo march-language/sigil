@@ -59,15 +59,15 @@ mod Page do
   fn decode(src_path : String, yaml_str : String) : Meta do
     let default_title = slug_of(src_path)
     if yaml_str == "" do
-      { title       = default_title,
-        raw_title   = None,
-        date        = "",
-        layout      = "default",
-        tags        = Nil,
-        draft       = false,
-        nav_order   = 0,
-        description = "",
-        slug        = "" }
+      { title: default_title,
+        raw_title: None,
+        date: "",
+        layout: "default",
+        tags: Nil,
+        draft: false,
+        nav_order: 0,
+        description: "",
+        slug: "" }
     else
       -- Split the front-matter into lines ONCE; get_field consumes a list each
       -- call, but Perceus inserts an IncRC (a refcount bump, not a deep copy)
@@ -108,15 +108,15 @@ mod Page do
                         Some(v) -> v
                         None    -> ""
                         end
-      { title       = title,
-        raw_title   = raw_title_opt,
-        date        = date,
-        layout      = layout,
-        tags        = tags,
-        draft       = draft,
-        nav_order   = nav_order,
-        description = description,
-        slug        = "" }
+      { title: title,
+        raw_title: raw_title_opt,
+        date: date,
+        layout: layout,
+        tags: tags,
+        draft: draft,
+        nav_order: nav_order,
+        description: description,
+        slug: "" }
     end
   end
 
@@ -141,30 +141,30 @@ mod Page do
 
   -- Return a new Meta with the title field replaced.
   fn with_title(m : Meta, t : String) : Meta do
-    { title       = t,
-      raw_title   = m.raw_title,
-      date        = m.date,
-      layout      = m.layout,
-      tags        = m.tags,
-      draft       = m.draft,
-      nav_order   = m.nav_order,
-      description = m.description,
-      slug        = m.slug }
+    { title: t,
+      raw_title: m.raw_title,
+      date: m.date,
+      layout: m.layout,
+      tags: m.tags,
+      draft: m.draft,
+      nav_order: m.nav_order,
+      description: m.description,
+      slug: m.slug }
   end
 
   -- Return a new Meta with the slug field replaced.  The slug is the page's
   -- output path relative to the content root (e.g. "docs/intro"); the build
   -- sets it at render time so layouts can mark the active nav entry.
   fn with_slug(m : Meta, s : String) : Meta do
-    { title       = m.title,
-      raw_title   = m.raw_title,
-      date        = m.date,
-      layout      = m.layout,
-      tags        = m.tags,
-      draft       = m.draft,
-      nav_order   = m.nav_order,
-      description = m.description,
-      slug        = s }
+    { title: m.title,
+      raw_title: m.raw_title,
+      date: m.date,
+      layout: m.layout,
+      tags: m.tags,
+      draft: m.draft,
+      nav_order: m.nav_order,
+      description: m.description,
+      slug: s }
   end
 
   -- Accessor for nav_order — drives sidebar ordering in custom layouts.

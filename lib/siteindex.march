@@ -33,7 +33,7 @@ mod SiteIndex do
     let title = Page.meta_title(meta)
     let date  = Page.meta_date(meta)
     let tags  = Page.meta_tags(meta)
-    prepend(idx, { slug = slug, title = title, date = date, tags = tags, excerpt = excerpt })
+    prepend(idx, { slug: slug, title: title, date: date, tags: tags, excerpt: excerpt })
   end
 
   -- Return entries in the order they were added.

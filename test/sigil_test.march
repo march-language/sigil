@@ -27,7 +27,7 @@ mod TestSigil do
       let _ = Dir.mkdir_p(content_dir)
       let _ = File.write(Path.join(content_dir, "hello.md"), "<p>Hello</p>")
       let _ = File.write(Path.join(content_dir, "world.md"), "<p>World</p>")
-      let site = { content_dir = content_dir, output_dir = output_dir, static_dir = "/tmp/no_static", title = "", base_url = "" }
+      let site = { content_dir: content_dir, output_dir: output_dir, static_dir: "/tmp/no_static", title: "", base_url: "" }
       let result = Build.run(site)
       assert (match result do Ok(_) -> true | Err(_) -> false end)
       let _ = Dir.rm_rf(tmp)
@@ -39,7 +39,7 @@ mod TestSigil do
       let output_dir  = Path.join(tmp, "out")
       let _ = Dir.mkdir_p(content_dir)
       let _ = File.write(Path.join(content_dir, "hello.md"), "Hello")
-      let site = { content_dir = content_dir, output_dir = output_dir, static_dir = "/tmp/no_static", title = "", base_url = "" }
+      let site = { content_dir: content_dir, output_dir: output_dir, static_dir: "/tmp/no_static", title: "", base_url: "" }
       let _ = Build.run(site)
       let html = match File.read(Path.join(output_dir, "hello.html")) do
                  Ok(s) -> s | Err(_) -> "" end
@@ -54,7 +54,7 @@ mod TestSigil do
       let _ = Dir.mkdir_p(content_dir)
       let _ = File.write(Path.join(content_dir, "notebook.scrollmd"),
                          "# Notebook\n\n```march\nlet x = 6 * 7\n```")
-      let site = { content_dir = content_dir, output_dir = output_dir, static_dir = "/tmp/no_static", title = "", base_url = "" }
+      let site = { content_dir: content_dir, output_dir: output_dir, static_dir: "/tmp/no_static", title: "", base_url: "" }
       let _ = Build.run(site)
       let html = match File.read(Path.join(output_dir, "notebook.html")) do
                  Ok(s) -> s | Err(_) -> "" end
@@ -69,7 +69,7 @@ mod TestSigil do
       let output_dir  = Path.join(tmp, "out")
       let _ = Dir.mkdir_p(content_dir)
       let _ = File.write(Path.join(content_dir, "page.md"), "hello")
-      let site = { content_dir = content_dir, output_dir = output_dir, static_dir = "/tmp/no_static", title = "", base_url = "" }
+      let site = { content_dir: content_dir, output_dir: output_dir, static_dir: "/tmp/no_static", title: "", base_url: "" }
       let _ = Build.run(site)
       let html = match File.read(Path.join(output_dir, "page.html")) do
                  Ok(s) -> s | Err(_) -> "" end
@@ -84,7 +84,7 @@ mod TestSigil do
       let _ = Dir.mkdir_p(content_dir)
       let _ = File.write(Path.join(content_dir, "page.md"), "hello")
       let _ = File.write(Path.join(content_dir, "style.css"), "body {}")
-      let site = { content_dir = content_dir, output_dir = output_dir, static_dir = "/tmp/no_static", title = "", base_url = "" }
+      let site = { content_dir: content_dir, output_dir: output_dir, static_dir: "/tmp/no_static", title: "", base_url: "" }
       let _ = Build.run(site)
       -- The two-pass build also generates sitemap.xml, feed.xml, and tag/ dir.
       -- Assert that style.css was NOT copied to output (only .md files get processed).
@@ -106,7 +106,7 @@ mod TestSigil do
       let _ = Dir.mkdir_p(sub_dir)
       let _ = File.write(Path.join(content_dir, "top.md"), "# Top\n\nTop body.")
       let _ = File.write(Path.join(sub_dir, "nested.md"), "# Nested\n\nNested body.")
-      let site = { content_dir = content_dir, output_dir = output_dir, static_dir = "/tmp/no_static", title = "", base_url = "" }
+      let site = { content_dir: content_dir, output_dir: output_dir, static_dir: "/tmp/no_static", title: "", base_url: "" }
       let _ = Build.run(site)
       -- Output mirrors the content tree: content/posts/nested.md -> out/posts/nested.html
       let top_html = match File.read(Path.join(output_dir, "top.html")) do Ok(s) -> s | Err(_) -> "" end
@@ -117,7 +117,7 @@ mod TestSigil do
     end
 
     test "returns Err when content dir does not exist" do
-      let site = { content_dir = "/tmp/sigil_no_such_dir_xyz", output_dir = "/tmp/sigil_out_xyz", static_dir = "/tmp/no_static", title = "", base_url = "" }
+      let site = { content_dir: "/tmp/sigil_no_such_dir_xyz", output_dir: "/tmp/sigil_out_xyz", static_dir: "/tmp/no_static", title: "", base_url: "" }
       let result = Build.run(site)
       assert (match result do Ok(_) -> false | Err(_) -> true end)
     end
@@ -128,7 +128,7 @@ mod TestSigil do
       let output_dir  = Path.join(tmp, "out")
       let _ = Dir.mkdir_p(content_dir)
       let _ = File.write(Path.join(content_dir, "post.md"), "# Hello\n\nParagraph text.")
-      let site = { content_dir = content_dir, output_dir = output_dir, static_dir = "/tmp/no_static", title = "", base_url = "" }
+      let site = { content_dir: content_dir, output_dir: output_dir, static_dir: "/tmp/no_static", title: "", base_url: "" }
       let _ = Build.run(site)
       let html = match File.read(Path.join(output_dir, "post.html")) do
                  Ok(s) -> s | Err(_) -> "" end
@@ -150,7 +150,7 @@ mod TestSigil do
                 "---\ntitle: Beta Post\ndate: 2026-02-02\n---\n# Beta\n\nBody.")
       let _ = File.write(Path.join(content_dir, "secret.md"),
                 "---\ntitle: Secret Draft\ndate: 2026-03-02\ndraft: true\n---\n# Secret\n\nBody.")
-      let site = { content_dir = content_dir, output_dir = output_dir, static_dir = "/tmp/no_static", title = "My Blog", base_url = "" }
+      let site = { content_dir: content_dir, output_dir: output_dir, static_dir: "/tmp/no_static", title: "My Blog", base_url: "" }
       let _ = Build.run(site)
       let html = match File.read(Path.join(output_dir, "index.html")) do
                  Ok(s) -> s | Err(_) -> "" end
@@ -291,7 +291,7 @@ mod TestSigil do
       let _ = Dir.mkdir_p(content_dir)
       let _ = File.write(Path.join(content_dir, "post.md"),
                          "---\ntitle: My Great Post\n---\n\n# Hello\n")
-      let site = { content_dir = content_dir, output_dir = output_dir, static_dir = static_dir, title = "", base_url = "" }
+      let site = { content_dir: content_dir, output_dir: output_dir, static_dir: static_dir, title: "", base_url: "" }
       let _ = Build.run(site)
       let html = match File.read(Path.join(output_dir, "post.html")) do
                  Ok(s) -> s | Err(_) -> "" end
@@ -309,7 +309,7 @@ mod TestSigil do
                          "---\ndraft: true\n---\n\nSecret content.\n")
       let _ = File.write(Path.join(content_dir, "public.md"),
                          "# Public\n")
-      let site = { content_dir = content_dir, output_dir = output_dir, static_dir = static_dir, title = "", base_url = "" }
+      let site = { content_dir: content_dir, output_dir: output_dir, static_dir: static_dir, title: "", base_url: "" }
       let _ = Build.run(site)
       let draft_exists = match File.read(Path.join(output_dir, "draft.html")) do
                          Ok(_) -> true | Err(_) -> false end
@@ -485,7 +485,7 @@ mod TestSigil do
       let output_dir  = Path.join(tmp, "out")
       let _ = Dir.mkdir_p(content_dir)
       let _ = File.write(Path.join(content_dir, "hello.md"), "# Hello\n\nContent.")
-      let build_cfg = { content_dir = content_dir, output_dir = output_dir, static_dir = "/tmp/no_static", title = "", base_url = "" }
+      let build_cfg = { content_dir: content_dir, output_dir: output_dir, static_dir: "/tmp/no_static", title: "", base_url: "" }
       let lf = Build.LayoutFn(fn page -> fn content ->
         IOList.from_string("<html data-custom=\"yes\">")
         |> IOList.append(content)
@@ -507,7 +507,7 @@ mod TestSigil do
       let output_dir  = Path.join(tmp, "out")
       let _ = Dir.mkdir_p(docs_dir)
       let _ = File.write(Path.join(docs_dir, "intro.md"), "# Intro")
-      let build_cfg = { content_dir = content_dir, output_dir = output_dir, static_dir = "/tmp/no_static", title = "", base_url = "" }
+      let build_cfg = { content_dir: content_dir, output_dir: output_dir, static_dir: "/tmp/no_static", title: "", base_url: "" }
       let lf = Build.LayoutFn(fn page -> fn content ->
         IOList.from_string("<html data-slug=\"" ++ Page.meta_slug(page) ++ "\">")
         |> IOList.append(content)
@@ -526,7 +526,7 @@ mod TestSigil do
       let output_dir  = Path.join(tmp, "out")
       let _ = Dir.mkdir_p(content_dir)
       let _ = File.write(Path.join(content_dir, "post.md"), "# Post Title")
-      let build_cfg = { content_dir = content_dir, output_dir = output_dir, static_dir = "/tmp/no_static", title = "", base_url = "" }
+      let build_cfg = { content_dir: content_dir, output_dir: output_dir, static_dir: "/tmp/no_static", title: "", base_url: "" }
       -- Site name captured as a plain string to avoid Perceus cross-module record RC underflow.
       let site_name = "Sigil Tests"
       let lf = Build.LayoutFn(fn page -> fn content ->
@@ -546,7 +546,7 @@ mod TestSigil do
       let output_dir  = Path.join(tmp, "out")
       let _ = Dir.mkdir_p(content_dir)
       let _ = File.write(Path.join(content_dir, "page.md"), "hello")
-      let site = { content_dir = content_dir, output_dir = output_dir, static_dir = "/tmp/no_static", title = "", base_url = "" }
+      let site = { content_dir: content_dir, output_dir: output_dir, static_dir: "/tmp/no_static", title: "", base_url: "" }
       let result = Build.run(site)
       assert (match result do Ok(_) -> true | Err(_) -> false end)
       let html = match File.read(Path.join(output_dir, "page.html")) do
@@ -562,7 +562,7 @@ mod TestSigil do
       let _ = Dir.mkdir_p(content_dir)
       -- No front-matter title: only a heading in the body
       let _ = File.write(Path.join(content_dir, "article.md"), "# My Great Article\n\nSome content.")
-      let build_cfg = { content_dir = content_dir, output_dir = output_dir, static_dir = "/tmp/no_static", title = "", base_url = "" }
+      let build_cfg = { content_dir: content_dir, output_dir: output_dir, static_dir: "/tmp/no_static", title: "", base_url: "" }
       -- Capture the page.title as seen by the layout
       let lf = Build.LayoutFn(fn page -> fn content ->
         IOList.from_string("<title>" ++ Page.meta_title(page) ++ "</title>")
@@ -790,8 +790,8 @@ mod TestSigil do
                          "---\ntitle: Plain Page\nlayout: default\n---\n\nPlain body.")
       let _ = File.write(Path.join(content_dir, "story.md"),
                          "---\ntitle: My Story\ndate: 2026-01-02\nlayout: post\n---\n\nStory body.")
-      let site = { content_dir = content_dir, output_dir = output_dir,
-                   static_dir = "/tmp/no_static", title = "", base_url = "" }
+      let site = { content_dir: content_dir, output_dir: output_dir,
+                   static_dir: "/tmp/no_static", title: "", base_url: "" }
       let _ = Build.run(site)
       let plain_html = match File.read(Path.join(output_dir, "plain.html")) do
                        Ok(s) -> s | Err(_) -> "" end
@@ -818,8 +818,8 @@ mod TestSigil do
       let _ = Dir.mkdir_p(content_dir)
       let _ = File.write(Path.join(content_dir, "undated.md"),
                          "---\ntitle: Undated Post\nlayout: post\n---\n\nBody.")
-      let site = { content_dir = content_dir, output_dir = output_dir,
-                   static_dir = "/tmp/no_static", title = "", base_url = "" }
+      let site = { content_dir: content_dir, output_dir: output_dir,
+                   static_dir: "/tmp/no_static", title: "", base_url: "" }
       let _ = Build.run(site)
       let html = match File.read(Path.join(output_dir, "undated.html")) do
                  Ok(s) -> s | Err(_) -> "" end
@@ -836,8 +836,8 @@ mod TestSigil do
       let _ = Dir.mkdir_p(content_dir)
       let _ = File.write(Path.join(content_dir, "weird.md"),
                          "---\ntitle: Weird\nlayout: nonesuch\n---\n\nBody.")
-      let site = { content_dir = content_dir, output_dir = output_dir,
-                   static_dir = "/tmp/no_static", title = "", base_url = "" }
+      let site = { content_dir: content_dir, output_dir: output_dir,
+                   static_dir: "/tmp/no_static", title: "", base_url: "" }
       let _ = Build.run(site)
       let html = match File.read(Path.join(output_dir, "weird.html")) do
                  Ok(s) -> s | Err(_) -> "" end
@@ -855,8 +855,8 @@ mod TestSigil do
       let _ = Dir.mkdir_p(content_dir)
       let _ = File.write(Path.join(content_dir, "hello.md"),
                          "---\ntitle: Hello\ndate: 2025-01-01\n---\n# Hello\n")
-      let site = { content_dir = content_dir, output_dir = output_dir,
-                   static_dir = "/tmp/no_static", title = "My Blog", base_url = "https://example.com" }
+      let site = { content_dir: content_dir, output_dir: output_dir,
+                   static_dir: "/tmp/no_static", title: "My Blog", base_url: "https://example.com" }
       let _ = Build.run(site)
       let xml = match File.read(Path.join(output_dir, "sitemap.xml")) do
                 Ok(s) -> s | Err(_) -> "" end
@@ -872,8 +872,8 @@ mod TestSigil do
       let _ = Dir.mkdir_p(content_dir)
       let _ = File.write(Path.join(content_dir, "post.md"),
                          "---\ntitle: My Post\ndate: 2025-02-01\n---\n# My Post\n")
-      let site = { content_dir = content_dir, output_dir = output_dir,
-                   static_dir = "/tmp/no_static", title = "Blog Title", base_url = "https://example.com" }
+      let site = { content_dir: content_dir, output_dir: output_dir,
+                   static_dir: "/tmp/no_static", title: "Blog Title", base_url: "https://example.com" }
       let _ = Build.run(site)
       let xml = match File.read(Path.join(output_dir, "feed.xml")) do
                 Ok(s) -> s | Err(_) -> "" end
@@ -890,8 +890,8 @@ mod TestSigil do
       let _ = Dir.mkdir_p(content_dir)
       let _ = File.write(Path.join(content_dir, "post.md"),
                          "---\ntitle: My Post\ndate: 2025-02-01\n---\n# My Post\n\nThis is the very first paragraph of the body.\n")
-      let site = { content_dir = content_dir, output_dir = output_dir,
-                   static_dir = "/tmp/no_static", title = "Blog Title", base_url = "https://example.com" }
+      let site = { content_dir: content_dir, output_dir: output_dir,
+                   static_dir: "/tmp/no_static", title: "Blog Title", base_url: "https://example.com" }
       let _ = Build.run(site)
       let xml = match File.read(Path.join(output_dir, "feed.xml")) do
                 Ok(s) -> s | Err(_) -> "" end
@@ -912,8 +912,8 @@ mod TestSigil do
       let _ = Dir.mkdir_p(content_dir)
       let _ = File.write(Path.join(content_dir, "post.md"),
                          "---\ntitle: Tagged Post\ntags: [march]\n---\n# Tagged Post\n")
-      let site = { content_dir = content_dir, output_dir = output_dir,
-                   static_dir = "/tmp/no_static", title = "", base_url = "" }
+      let site = { content_dir: content_dir, output_dir: output_dir,
+                   static_dir: "/tmp/no_static", title: "", base_url: "" }
       let _ = Build.run(site)
       let html = match File.read(Path.join(Path.join(output_dir, "tag"), "march.html")) do
                  Ok(s) -> s | Err(_) -> "" end
@@ -931,8 +931,8 @@ mod TestSigil do
                          "---\ntitle: Draft\ndraft: true\ntags: [secret]\n---\nSecret.\n")
       let _ = File.write(Path.join(content_dir, "public.md"),
                          "---\ntitle: Public\ntags: [open]\n---\n# Public\n")
-      let site = { content_dir = content_dir, output_dir = output_dir,
-                   static_dir = "/tmp/no_static", title = "", base_url = "" }
+      let site = { content_dir: content_dir, output_dir: output_dir,
+                   static_dir: "/tmp/no_static", title: "", base_url: "" }
       let _ = Build.run(site)
       let secret_exists = match File.read(Path.join(Path.join(output_dir, "tag"), "secret.html")) do
                           Ok(_) -> true | Err(_) -> false end
@@ -999,10 +999,10 @@ mod TestSigil do
     test "scaffolded post drives a working build" do
       let tmp = "/tmp/sigil_scaffold_build_" ++ to_string(System.monotonic_time())
       let _ = Scaffold.create(tmp)
-      let site = { content_dir = Path.join(tmp, "content"),
-                   output_dir = Path.join(tmp, "out"),
-                   static_dir = Path.join(tmp, "static"),
-                   title = "My Site", base_url = "" }
+      let site = { content_dir: Path.join(tmp, "content"),
+                   output_dir: Path.join(tmp, "out"),
+                   static_dir: Path.join(tmp, "static"),
+                   title: "My Site", base_url: "" }
       let result = Build.run(site)
       assert (match result do Ok(_) -> true | Err(_) -> false end)
       let html_exists = match File.read(Path.join(Path.join(tmp, "out"), "hello-world.html")) do
@@ -1041,9 +1041,9 @@ mod TestSigil do
       let _ = Dir.mkdir_p(content_dir)
       let _ = File.write(Path.join(content_dir, "hello.md"),
                 "---\ntitle: Hello\ndate: 2026-01-01\ntags: [x]\n---\nbody")
-      let site = { content_dir = content_dir, output_dir = output_dir,
-                   static_dir = "/tmp/no_static", title = "March",
-                   base_url = "https://org.github.io/march" }
+      let site = { content_dir: content_dir, output_dir: output_dir,
+                   static_dir: "/tmp/no_static", title: "March",
+                   base_url: "https://org.github.io/march" }
       let _ = Build.run(site)
       let idx = match File.read(Path.join(output_dir, "index.html")) do
                 Ok(s) -> s | Err(_) -> "" end
@@ -1057,9 +1057,9 @@ mod TestSigil do
       let _ = Dir.mkdir_p(content_dir)
       let _ = File.write(Path.join(content_dir, "hello.md"),
                 "---\ntitle: Hello\ndate: 2026-01-01\ntags: [x]\n---\nbody")
-      let site = { content_dir = content_dir, output_dir = output_dir,
-                   static_dir = "/tmp/no_static", title = "March",
-                   base_url = "https://org.github.io/march" }
+      let site = { content_dir: content_dir, output_dir: output_dir,
+                   static_dir: "/tmp/no_static", title: "March",
+                   base_url: "https://org.github.io/march" }
       let _ = Build.run(site)
       let tagp = match File.read(Path.join(Path.join(output_dir, "tag"), "x.html")) do
                  Ok(s) -> s | Err(_) -> "" end
@@ -1075,7 +1075,7 @@ mod TestSigil do
       let output_dir  = Path.join(tmp, "out")
       let _ = Dir.mkdir_p(content_dir)
       let _ = File.write(Path.join(content_dir, "post.md"), "---\ntitle: P\ndate: 2026-01-01\n---\nbody")
-      let cfg = { content_dir = content_dir, output_dir = output_dir, static_dir = "/tmp/no_static", title = "March", base_url = "https://example.com/march/" }
+      let cfg = { content_dir: content_dir, output_dir: output_dir, static_dir: "/tmp/no_static", title: "March", base_url: "https://example.com/march/" }
       let _ = Build.run(cfg)
       let sm = match File.read(Path.join(output_dir, "sitemap.xml")) do Ok(s) -> s | Err(_) -> "" end
       let fd = match File.read(Path.join(output_dir, "feed.xml")) do Ok(s) -> s | Err(_) -> "" end
@@ -1093,7 +1093,7 @@ mod TestSigil do
       let output_dir  = Path.join(tmp, "out")
       let _ = Dir.mkdir_p(content_dir)
       let _ = File.write(Path.join(content_dir, "index.md"), "# Landing\n\nHomeMarker body")
-      let cfg = { content_dir = content_dir, output_dir = output_dir, static_dir = "/tmp/no_static", title = "March", base_url = "" }
+      let cfg = { content_dir: content_dir, output_dir: output_dir, static_dir: "/tmp/no_static", title: "March", base_url: "" }
       let lf = Build.LayoutFn(fn page -> fn content ->
         IOList.from_string("<main>") |> IOList.append(content) |> IOList.append(IOList.from_string("</main>")))
       let _ = Build.run_pages_with_layout(cfg, lf)
@@ -1112,7 +1112,7 @@ mod TestSigil do
       let output_dir  = Path.join(tmp, "out")
       let _ = Dir.mkdir_p(content_dir)
       let _ = File.write(Path.join(content_dir, "post.md"), "# Post\n\nbody")
-      let cfg = { content_dir = content_dir, output_dir = output_dir, static_dir = "/tmp/no_static", title = "March", base_url = "" }
+      let cfg = { content_dir: content_dir, output_dir: output_dir, static_dir: "/tmp/no_static", title: "March", base_url: "" }
       let lf = Build.LayoutFn(fn page -> fn content -> content)
       let _ = Build.run_with_layout(cfg, lf)
       let feed_exists = match File.read(Path.join(output_dir, "feed.xml")) do Ok(_) -> true | Err(_) -> false end
@@ -1177,8 +1177,8 @@ mod TestSigil do
       let output_dir  = Path.join(tmp, "out")
       let _ = Dir.mkdir_p(docs_dir)
       let _ = File.write(Path.join(docs_dir, "intro.md"), "# Intro\nbody")
-      let site = { content_dir = content_dir, output_dir = output_dir,
-                   static_dir = "/tmp/no_static", title = "M", base_url = "" }
+      let site = { content_dir: content_dir, output_dir: output_dir,
+                   static_dir: "/tmp/no_static", title: "M", base_url: "" }
       let _ = Build.run(site)
       let html = match File.read(Path.join(Path.join(output_dir, "docs"), "intro.html")) do
                  Ok(s) -> s | Err(_) -> "" end
