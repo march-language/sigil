@@ -1,0 +1,72 @@
+-- Build hooks: deferred actions that run before or after the full build.
+-- Any context (paths, config fields) must be captured in the closure at
+-- creation time; hooks receive no arguments at run time.
+
+mod Hook do
+
+  -- A build hook: a deferred Unit → Result action.  Use Hook.shell or
+  -- Hook.march to construct one; use Hook.run / Hook.run_all to execute.
+  type Fn = Fn(Unit -> Result(Unit, String))
+
+  -- Wrap a March function as a hook.
+  fn march(f : Unit -> Result(Unit, String)) : Fn do
+    Fn(f)
+  end
+
+  -- Wrap a shell command as a hook.  Invoked via `sh -c cmd`.
+  -- Stdout is printed when non-empty; stderr is included in the Err message
+  -- when the command exits non-zero.
+  fn shell(cmd : String) : Fn do
+    Fn(fn _ ->
+      let _ = println("[hook] " ++ cmd)
+      match Process.run("sh", Cons("-c", Cons(cmd, Nil))) do
+      Err(e) -> Err("hook failed to spawn: " ++ e)
+      Ok(r)  -> do
+        -- Extract all fields before any conditional so Perceus sees all three
+        -- uses of `r` at the same sequential scope level.
+        let ok   = Process.ok(r)
+        let out  = Process.stdout(r)
+        let err  = Process.stderr(r)
+        let _    = if String.is_empty(out) do () else println(out) end
+        if ok do Ok(())
+        else Err("hook exited non-zero: " ++ err)
+        end
+      end
+      end
+    )
+  end
+
+  -- Execute a single hook.
+  fn run(hook : Fn) : Result(Unit, String) do
+    match hook do
+    Fn(f) -> f(())
+    end
+  end
+
+  -- Execute a list of hooks in order.  Stops on the first Err.
+  fn run_all(hooks : List(Fn)) : Result(Unit, String) do
+    match hooks do
+    Nil -> Ok(())
+    Cons(h, rest) ->
+      match run(h) do
+      Err(e) -> Err(e)
+      Ok(_)  -> run_all(rest)
+      end
+    end
+  end
+
+  -- Hook sets that bracket the entire build.
+  -- before: run before pass 1 (content indexing).
+  -- after:  run after assets are copied (pagefind, deploy scripts, etc.).
+  -- Any hook returning Err aborts the build immediately.
+  type Set = {
+    before : List(Fn),
+    after  : List(Fn)
+  }
+
+  -- An empty hook set (no before or after hooks).
+  fn no_hooks() : Set do
+    { before: Nil, after: Nil }
+  end
+
+end

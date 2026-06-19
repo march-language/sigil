@@ -18,6 +18,7 @@ mod Build do
   -- continuation BEFORE the selector is consumed on each iteration).
   type Selector = Selector(String -> LayoutFn)
 
+
   pfn fmt_err(e) : String do
     to_string(e)
   end
@@ -210,55 +211,82 @@ mod Build do
     run_pages_with_selector(cfg, const_selector(lf))
   end
 
+  -- Like run_with_selector but fires Hook.Fn lists before and after the build.
+  -- Existing callers of run_with_selector / run_with_layout are unaffected.
+  fn run_with_selector_and_hooks(cfg : Config.Site, sel : Selector, hooks : Hook.Set) : Result(Unit, String) do
+    run_core_with_hooks(cfg, sel, true, hooks)
+  end
+
+  fn run_pages_with_selector_and_hooks(cfg : Config.Site, sel : Selector, hooks : Hook.Set) : Result(Unit, String) do
+    run_core_with_hooks(cfg, sel, false, hooks)
+  end
+
+  -- Private: run before hooks, delegate to run_core, run after hooks.
+  -- Fields of hooks extracted before any match to keep Perceus counts correct.
+  pfn run_core_with_hooks(cfg : Config.Site, sel : Selector, gen_collections : Bool, hooks : Hook.Set) : Result(Unit, String) do
+    let before_hooks = hooks.before
+    let after_hooks  = hooks.after
+    match Hook.run_all(before_hooks) do
+    Err(e) -> Err("before hook: " ++ e)
+    Ok(_) ->
+      match run_core(cfg, sel, gen_collections) do
+      Err(e) -> Err(e)
+      Ok(_) ->
+        match Hook.run_all(after_hooks) do
+        Err(e) -> Err("after hook: " ++ e)
+        Ok(_)  -> Ok(())
+        end
+      end
+    end
+  end
+
   -- gen_collections gates pass 2b: true → blog mode, false → docs mode.
   fn run_core(cfg : Config.Site, sel : Selector, gen_collections : Bool) : Result(Unit, String) do
-    -- mkdir consumes its argument; derive a dedicated binding for it.
-    let output_dir_mk = Config.site_output_dir(cfg)
+    -- Two-level extraction to work around Perceus RC bugs:
+    -- Level 1: extract each field from cfg EXACTLY ONCE (5 uses of cfg total,
+    --   in flat sequential let-bindings so Perceus counts them correctly).
+    -- Level 2: derive all per-use owned copies from those owned Strings before
+    --   any match branching (Perceus miscounts uses across match-arm boundaries).
+    let content_dir = "" ++ Config.site_content_dir(cfg)
+    let output_dir  = "" ++ Config.site_output_dir(cfg)
+    let static_dir  = "" ++ Config.site_static_dir(cfg)
+    let site_title  = "" ++ Config.site_title(cfg)
+    let base_url    = "" ++ Config.site_base_url(cfg)
+    -- Level 2: per-use copies, all derived before the first match.
+    let content_dir_p1  = "" ++ content_dir
+    let content_dir_r1  = "" ++ content_dir
+    let content_root_p1 = "" ++ content_dir
+    let content_dir_p2  = "" ++ content_dir
+    let content_dir_r2  = "" ++ content_dir
+    let content_root_p2 = "" ++ content_dir
+    let output_dir_mk   = "" ++ output_dir
+    let output_dir_p2a  = "" ++ output_dir
+    let output_dir_p2b  = "" ++ output_dir
+    let output_dir_cpy  = "" ++ output_dir
     match Dir.mkdir_p(output_dir_mk) do
     Err(e) -> Err("cannot create output dir: " ++ fmt_err(e))
     Ok(_) -> do
       -- Pass 1: list content_dir and build the site index.
-      -- Dir.list_full consumes content_dir_p1; derive a fresh copy.
-      let content_dir_p1 = Config.site_content_dir(cfg)
       match Dir.list_full(content_dir_p1) do
       Err(e) -> Err("cannot list content dir: " ++ fmt_err(e))
       Ok(_) -> do
-        -- list_full above only validates the dir exists; collect_md does the
-        -- real recursive gather on a fresh owned copy of content_dir.
-        let content_dir_r1 = Config.site_content_dir(cfg)
+        -- collect_md does the real recursive gather on a fresh owned copy.
         let md_paths_p1 = collect_md(content_dir_r1)
-        -- content_root keys the index slugs by their path relative to the content
-        -- dir so links/collections match the nested output paths.
-        let content_root_p1 = Config.site_content_dir(cfg)
         let idx         = collect_index(content_root_p1, md_paths_p1, SiteIndex.empty())
         -- Pass 2a: list content_dir again for the render pass.
-        -- Each Dir.list_full is a separate consume; fresh binding required.
-        let content_dir_p2 = Config.site_content_dir(cfg)
         match Dir.list_full(content_dir_p2) do
         Err(e) -> Err("cannot list content dir (pass 2): " ++ fmt_err(e))
         Ok(_) -> do
-          let content_dir_r2 = Config.site_content_dir(cfg)
           let md_paths_p2 = collect_md(content_dir_r2)
-          let content_root_p2 = Config.site_content_dir(cfg)
-          -- Derive all remaining owned values from cfg before the consuming calls.
-          let output_dir_p2a = Config.site_output_dir(cfg)
-          let output_dir_p2b = Config.site_output_dir(cfg)
-          let output_dir_cpy = Config.site_output_dir(cfg)
-          let site_title     = Config.site_title(cfg)
-          let base_url       = Config.site_base_url(cfg)
-          let static_dir     = Config.site_static_dir(cfg)
-          -- Pass 2a: render pages (build_all_layout borrows output_dir_p2a).
+          -- Pass 2a: render pages.
           match build_all_layout(output_dir_p2a, content_root_p2, sel, md_paths_p2) do
           Err(msg) -> Err(msg)
           Ok(_) -> do
-            -- Pass 2b: generate collections only in blog mode.  In docs mode the
-            -- conditional's else branch leaves idx/site_title/base_url/output_dir_p2b
-            -- unconsumed; Perceus inserts their DecRCs there automatically.
+            -- Pass 2b: generate collections only in blog mode.
             match (if gen_collections do
                      Collections.build_collections(output_dir_p2b, site_title, base_url, idx)
                    else Ok(()) end) do
             Err(msg) -> Err(msg)
-            -- Assets.copy consumes both its args; use the dedicated copies.
             Ok(_) -> Assets.copy(static_dir, output_dir_cpy)
             end
           end
