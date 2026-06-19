@@ -4,26 +4,24 @@ mod Scaffold do
     to_string(e)
   end
 
-  -- Sample markdown post with valid front-matter (title/date/layout/tags/draft)
-  -- and a small markdown body (heading, paragraph, list).
+  -- Sample markdown post with valid front-matter.
   pfn hello_world_md() : String do
     "---\n"
     ++ "title: Hello World\n"
-    ++ "date: 2026-06-10\n"
-    ++ "layout: default\n"
+    ++ "date: 2026-06-19\n"
+    ++ "layout: post\n"
     ++ "tags: [hello, sigil]\n"
     ++ "draft: false\n"
     ++ "---\n"
     ++ "\n"
     ++ "# Hello, world!\n"
     ++ "\n"
-    ++ "Welcome to your brand new site, generated with Sigil.\n"
+    ++ "Welcome to your new Sigil site.\n"
     ++ "\n"
-    ++ "Here are a few things you can do next:\n"
-    ++ "\n"
-    ++ "- Edit this post in `content/hello-world.md`\n"
-    ++ "- Tweak the styles in `static/style.css`\n"
+    ++ "- Edit posts in `content/posts/`\n"
+    ++ "- Add pages (about, etc.) in `content/`\n"
     ++ "- Run `sigil build` to regenerate the site\n"
+    ++ "- Run `sigil new post \"My Title\"` to scaffold a new post\n"
   end
 
   -- A minimal sample stylesheet.
@@ -137,7 +135,11 @@ mod Scaffold do
   end
 
   pfn write_payload(dir : String, content_dir : String, static_dir : String) : Result(Unit, String) do
-    match write_file(Path.join(content_dir, "hello-world.md"), hello_world_md()) do
+    let posts_dir = Path.join(content_dir, "posts")
+    match make_dir(posts_dir) do
+    Err(m) -> Err(m)
+    Ok(_) ->
+    match write_file(Path.join(posts_dir, "hello-world.md"), hello_world_md()) do
     Err(m) -> Err(m)
     Ok(_) ->
       match write_file(Path.join(static_dir, "style.css"), style_css()) do
@@ -150,6 +152,7 @@ mod Scaffold do
         end
       end
     end
+    end
   end
 
   -- Friendly next-step message printed after a successful scaffold.
@@ -158,7 +161,50 @@ mod Scaffold do
     ++ "\n"
     ++ "Next steps:\n"
     ++ "  cd " ++ dir ++ "\n"
-    ++ "  sigil build --content-dir content --output-dir out --static-dir static\n"
+    ++ "  sigil build\n"
+    ++ "  sigil new post \"My First Post\"\n"
+  end
+
+  -- ─── New post scaffolding ────────────────────────────────────────────────────
+
+  -- Scaffold a new post file at content/posts/DATE-SLUG.md.
+  -- `date_str` is YYYY-MM-DD (supplied by the caller from DateTime.now()).
+  -- Returns Ok(filepath) on success so the caller can print a confirmation.
+  fn create_post(title : String, date_str : String) : Result(String, String) do
+    let slug     = title_to_slug(title)
+    let filename = date_str ++ "-" ++ slug ++ ".md"
+    let posts_dir = "content/posts"
+    let filepath  = Path.join(posts_dir, filename)
+    match make_dir(posts_dir) do
+    Err(m) -> Err(m)
+    Ok(_)  ->
+      if File.exists(filepath) do
+        Err("file already exists: " ++ filepath)
+      else
+        let title_copy = "" ++ title
+        let date_copy  = "" ++ date_str
+        match write_file(filepath, new_post_md(title_copy, date_copy)) do
+        Err(m) -> Err(m)
+        Ok(_)  -> Ok(filepath)
+        end
+      end
+    end
+  end
+
+  pfn new_post_md(title : String, date : String) : String do
+    "---\n"
+    ++ "title: " ++ title ++ "\n"
+    ++ "date: " ++ date ++ "\n"
+    ++ "layout: post\n"
+    ++ "tags: []\n"
+    ++ "draft: true\n"
+    ++ "---\n"
+    ++ "\n"
+  end
+
+  -- Convert a title string to a URL-safe slug: lowercase, spaces → hyphens.
+  pfn title_to_slug(title : String) : String do
+    String.replace_all(String.to_lowercase(title), " ", "-")
   end
 
 end

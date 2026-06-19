@@ -1,5 +1,7 @@
 mod Watcher do
 
+  needs IO.Console
+
   -- Read the output directory from the process environment.
   -- The Serve module sets SIGIL_OUTPUT_DIR before starting the watcher.
   -- Using System.env() on each call gives a fresh String with its own RC,

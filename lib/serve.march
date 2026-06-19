@@ -1,5 +1,8 @@
 mod Serve do
 
+  needs IO.Console
+  needs IO.NetListen
+
   pfn reload_script() : String do
     "<script>" ++
     "const __ws=new WebSocket('ws://'+location.host+'/ws');" ++

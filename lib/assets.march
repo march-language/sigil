@@ -29,28 +29,23 @@ mod Assets do
     end
   end
 
+  -- Worklist walk: directories are expanded into the front of the remaining work,
+  -- files are copied immediately.  Every recursive call is in tail position.
   pfn copy_all(root : String, dest_root : String, paths : List(String)) : Result(Unit, String) do
     match paths do
     Nil -> Ok(())
-    Cons(src, rest) -> do
-      let recurse = fn _ -> copy_all(root, dest_root, rest)
-      match copy_entry(root, dest_root, src) do
-      Err(msg) -> Err(msg)
-      Ok(_)    -> recurse(())
+    Cons(src, rest) ->
+      if Dir.exists(src) do
+        match Dir.list_full(src) do
+        Err(e) -> Err("cannot list dir " ++ src ++ ": " ++ fmt_err(e))
+        Ok(sub) -> copy_all(root, dest_root, List.append(sub, rest))
+        end
+      else
+        match copy_file(root, dest_root, src) do
+        Err(msg) -> Err(msg)
+        Ok(_)    -> copy_all(root, dest_root, rest)
+        end
       end
-    end
-    end
-  end
-
-  -- A directory entry recurses; a file entry is copied to its mirrored path.
-  pfn copy_entry(root : String, dest_root : String, src : String) : Result(Unit, String) do
-    if Dir.exists(src) do
-      match Dir.list_full(src) do
-      Err(e) -> Err("cannot list dir " ++ src ++ ": " ++ fmt_err(e))
-      Ok(sub) -> copy_all(root, dest_root, sub)
-      end
-    else
-      copy_file(root, dest_root, src)
     end
   end
 

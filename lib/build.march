@@ -1,5 +1,7 @@
 mod Build do
 
+  needs IO.Console
+
   -- Wrapper for a user-supplied layout function.
   -- Uses a nominal type to avoid March's curried function-type annotation ambiguity.
   -- Site-wide metadata is intentionally NOT part of the function type: the caller
@@ -311,12 +313,10 @@ mod Build do
         -- RC note: meta is consumed by Page.meta_draft before the match arm that uses
         -- SiteIndex.add.  Capture the add continuation before the draft check so both
         -- uses of meta are visible at the same scope level.
-        let add_fn = fn _ -> SiteIndex.add(idx, slug, excerpt, meta)
+        let add_fn  = fn _ -> SiteIndex.add(idx, slug, excerpt, meta)
         let is_draft = Page.meta_draft(meta)
-        match is_draft do
-        true -> idx
-        false -> add_fn(())
-        end
+        let is_post  = String.starts_with(slug, "posts/")
+        if is_draft || not(is_post) do idx else add_fn(()) end
       end
       end
     end
@@ -493,23 +493,26 @@ mod Build do
   -- `Text` is qualified as `Inline.Text` because the stdlib Xml module also
   -- defines a `Text` constructor (on XmlNode); a bare `Text` pattern is
   -- ambiguous.
+  -- Worklist accumulator: inner inline lists (Emph/Strong/Link children) are
+  -- prepended to the remaining work so every call is in tail position.
   pfn inlines_to_text(inlines : List(Inline)) : String do
-    match inlines do
-    Nil -> ""
-    Cons(inline, rest) -> do
-      let piece =
-        match inline do
-        Inline.Text(s) -> s
-        Code(s) -> s
-        Emph(inner) -> inlines_to_text(inner)
-        Strong(inner) -> inlines_to_text(inner)
-        Link(_, _, inner) -> inlines_to_text(inner)
-        Image(_, alt, _) -> alt
-        HardBreak -> " "
-        SoftBreak -> " "
-        end
-      piece ++ inlines_to_text(rest)
-    end
+    inlines_to_text_go(inlines, "")
+  end
+
+  pfn inlines_to_text_go(work : List(Inline), acc : String) : String do
+    match work do
+    Nil -> acc
+    Cons(inline, rest) ->
+      match inline do
+      Inline.Text(s)      -> inlines_to_text_go(rest, acc ++ s)
+      Code(s)             -> inlines_to_text_go(rest, acc ++ s)
+      Emph(inner)         -> inlines_to_text_go(List.append(inner, rest), acc)
+      Strong(inner)       -> inlines_to_text_go(List.append(inner, rest), acc)
+      Link(_, _, inner)   -> inlines_to_text_go(List.append(inner, rest), acc)
+      Image(_, alt, _)    -> inlines_to_text_go(rest, acc ++ alt)
+      HardBreak           -> inlines_to_text_go(rest, acc ++ " ")
+      SoftBreak           -> inlines_to_text_go(rest, acc ++ " ")
+      end
     end
   end
 

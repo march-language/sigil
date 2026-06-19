@@ -143,12 +143,13 @@ mod TestSigil do
       let tmp = "/tmp/sigil_index_" ++ to_string(System.monotonic_time())
       let content_dir = Path.join(tmp, "content")
       let output_dir  = Path.join(tmp, "out")
-      let _ = Dir.mkdir_p(content_dir)
-      let _ = File.write(Path.join(content_dir, "alpha.md"),
+      let posts_dir = Path.join(content_dir, "posts")
+      let _ = Dir.mkdir_p(posts_dir)
+      let _ = File.write(Path.join(posts_dir, "alpha.md"),
                 "---\ntitle: Alpha Post\ndate: 2026-01-02\n---\n# Alpha\n\nBody.")
-      let _ = File.write(Path.join(content_dir, "beta.md"),
+      let _ = File.write(Path.join(posts_dir, "beta.md"),
                 "---\ntitle: Beta Post\ndate: 2026-02-02\n---\n# Beta\n\nBody.")
-      let _ = File.write(Path.join(content_dir, "secret.md"),
+      let _ = File.write(Path.join(posts_dir, "secret.md"),
                 "---\ntitle: Secret Draft\ndate: 2026-03-02\ndraft: true\n---\n# Secret\n\nBody.")
       let site = { content_dir: content_dir, output_dir: output_dir, static_dir: "/tmp/no_static", title: "My Blog", base_url: "" }
       let _ = Build.run(site)
@@ -157,10 +158,10 @@ mod TestSigil do
       -- full document with the site title
       assert (String.contains(html, "<!DOCTYPE html>"))
       assert (String.contains(html, "My Blog"))
-      -- links to each non-draft post
-      assert (String.contains(html, "href=\"/alpha.html\""))
+      -- links to each non-draft post (slugs are posts-subdir-relative)
+      assert (String.contains(html, "href=\"/posts/alpha.html\""))
       assert (String.contains(html, "Alpha Post"))
-      assert (String.contains(html, "href=\"/beta.html\""))
+      assert (String.contains(html, "href=\"/posts/beta.html\""))
       assert (String.contains(html, "Beta Post"))
       -- drafts excluded
       assert (not(String.contains(html, "Secret Draft")))
@@ -852,8 +853,9 @@ mod TestSigil do
       let tmp         = "/tmp/sigil_m4_sitemap_" ++ to_string(System.monotonic_time())
       let content_dir = Path.join(tmp, "content")
       let output_dir  = Path.join(tmp, "out")
-      let _ = Dir.mkdir_p(content_dir)
-      let _ = File.write(Path.join(content_dir, "hello.md"),
+      let posts_dir   = Path.join(content_dir, "posts")
+      let _ = Dir.mkdir_p(posts_dir)
+      let _ = File.write(Path.join(posts_dir, "hello.md"),
                          "---\ntitle: Hello\ndate: 2025-01-01\n---\n# Hello\n")
       let site = { content_dir: content_dir, output_dir: output_dir,
                    static_dir: "/tmp/no_static", title: "My Blog", base_url: "https://example.com" }
@@ -861,7 +863,7 @@ mod TestSigil do
       let xml = match File.read(Path.join(output_dir, "sitemap.xml")) do
                 Ok(s) -> s | Err(_) -> "" end
       assert (String.contains(xml, "<urlset"))
-      assert (String.contains(xml, "hello.html"))
+      assert (String.contains(xml, "posts/hello.html"))
       let _ = Dir.rm_rf(tmp)
     end
 
@@ -869,8 +871,9 @@ mod TestSigil do
       let tmp         = "/tmp/sigil_m4_feed_" ++ to_string(System.monotonic_time())
       let content_dir = Path.join(tmp, "content")
       let output_dir  = Path.join(tmp, "out")
-      let _ = Dir.mkdir_p(content_dir)
-      let _ = File.write(Path.join(content_dir, "post.md"),
+      let posts_dir   = Path.join(content_dir, "posts")
+      let _ = Dir.mkdir_p(posts_dir)
+      let _ = File.write(Path.join(posts_dir, "post.md"),
                          "---\ntitle: My Post\ndate: 2025-02-01\n---\n# My Post\n")
       let site = { content_dir: content_dir, output_dir: output_dir,
                    static_dir: "/tmp/no_static", title: "Blog Title", base_url: "https://example.com" }
@@ -887,8 +890,9 @@ mod TestSigil do
       let tmp         = "/tmp/sigil_m4_feeddesc_" ++ to_string(System.monotonic_time())
       let content_dir = Path.join(tmp, "content")
       let output_dir  = Path.join(tmp, "out")
-      let _ = Dir.mkdir_p(content_dir)
-      let _ = File.write(Path.join(content_dir, "post.md"),
+      let posts_dir   = Path.join(content_dir, "posts")
+      let _ = Dir.mkdir_p(posts_dir)
+      let _ = File.write(Path.join(posts_dir, "post.md"),
                          "---\ntitle: My Post\ndate: 2025-02-01\n---\n# My Post\n\nThis is the very first paragraph of the body.\n")
       let site = { content_dir: content_dir, output_dir: output_dir,
                    static_dir: "/tmp/no_static", title: "Blog Title", base_url: "https://example.com" }
@@ -909,8 +913,9 @@ mod TestSigil do
       let tmp         = "/tmp/sigil_m4_tags_" ++ to_string(System.monotonic_time())
       let content_dir = Path.join(tmp, "content")
       let output_dir  = Path.join(tmp, "out")
-      let _ = Dir.mkdir_p(content_dir)
-      let _ = File.write(Path.join(content_dir, "post.md"),
+      let posts_dir   = Path.join(content_dir, "posts")
+      let _ = Dir.mkdir_p(posts_dir)
+      let _ = File.write(Path.join(posts_dir, "post.md"),
                          "---\ntitle: Tagged Post\ntags: [march]\n---\n# Tagged Post\n")
       let site = { content_dir: content_dir, output_dir: output_dir,
                    static_dir: "/tmp/no_static", title: "", base_url: "" }
@@ -926,10 +931,11 @@ mod TestSigil do
       let tmp         = "/tmp/sigil_m4_draft_" ++ to_string(System.monotonic_time())
       let content_dir = Path.join(tmp, "content")
       let output_dir  = Path.join(tmp, "out")
-      let _ = Dir.mkdir_p(content_dir)
-      let _ = File.write(Path.join(content_dir, "draft.md"),
+      let posts_dir   = Path.join(content_dir, "posts")
+      let _ = Dir.mkdir_p(posts_dir)
+      let _ = File.write(Path.join(posts_dir, "draft.md"),
                          "---\ntitle: Draft\ndraft: true\ntags: [secret]\n---\nSecret.\n")
-      let _ = File.write(Path.join(content_dir, "public.md"),
+      let _ = File.write(Path.join(posts_dir, "public.md"),
                          "---\ntitle: Public\ntags: [open]\n---\n# Public\n")
       let site = { content_dir: content_dir, output_dir: output_dir,
                    static_dir: "/tmp/no_static", title: "", base_url: "" }
@@ -949,7 +955,7 @@ mod TestSigil do
       let tmp = "/tmp/sigil_scaffold_" ++ to_string(System.monotonic_time())
       let result = Scaffold.create(tmp)
       assert (match result do Ok(_) -> true | Err(_) -> false end)
-      let post_exists = match File.read(Path.join(Path.join(tmp, "content"), "hello-world.md")) do
+      let post_exists = match File.read(Path.join(Path.join(Path.join(tmp, "content"), "posts"), "hello-world.md")) do
                         Ok(_) -> true | Err(_) -> false end
       let css_exists  = match File.read(Path.join(Path.join(tmp, "static"), "style.css")) do
                         Ok(_) -> true | Err(_) -> false end
@@ -967,11 +973,11 @@ mod TestSigil do
     test "sample post contains valid front-matter" do
       let tmp = "/tmp/sigil_scaffold_fm_" ++ to_string(System.monotonic_time())
       let _ = Scaffold.create(tmp)
-      let post = match File.read(Path.join(Path.join(tmp, "content"), "hello-world.md")) do
+      let post = match File.read(Path.join(Path.join(Path.join(tmp, "content"), "posts"), "hello-world.md")) do
                  Ok(s) -> s | Err(_) -> "" end
       assert (String.contains(post, "---"))
       assert (String.contains(post, "title: Hello World"))
-      assert (String.contains(post, "layout: default"))
+      assert (String.contains(post, "layout: post"))
       assert (String.contains(post, "tags: [hello, sigil]"))
       assert (String.contains(post, "draft: false"))
       let _ = Dir.rm_rf(tmp)
@@ -1005,7 +1011,7 @@ mod TestSigil do
                    title: "My Site", base_url: "" }
       let result = Build.run(site)
       assert (match result do Ok(_) -> true | Err(_) -> false end)
-      let html_exists = match File.read(Path.join(Path.join(tmp, "out"), "hello-world.html")) do
+      let html_exists = match File.read(Path.join(Path.join(Path.join(tmp, "out"), "posts"), "hello-world.html")) do
                         Ok(_) -> true | Err(_) -> false end
       assert html_exists
       let _ = Dir.rm_rf(tmp)
@@ -1038,8 +1044,9 @@ mod TestSigil do
       let tmp = "/tmp/sigil_prefix_" ++ to_string(System.monotonic_time())
       let content_dir = Path.join(tmp, "content")
       let output_dir  = Path.join(tmp, "out")
-      let _ = Dir.mkdir_p(content_dir)
-      let _ = File.write(Path.join(content_dir, "hello.md"),
+      let posts_dir   = Path.join(content_dir, "posts")
+      let _ = Dir.mkdir_p(posts_dir)
+      let _ = File.write(Path.join(posts_dir, "hello.md"),
                 "---\ntitle: Hello\ndate: 2026-01-01\ntags: [x]\n---\nbody")
       let site = { content_dir: content_dir, output_dir: output_dir,
                    static_dir: "/tmp/no_static", title: "March",
@@ -1047,15 +1054,16 @@ mod TestSigil do
       let _ = Build.run(site)
       let idx = match File.read(Path.join(output_dir, "index.html")) do
                 Ok(s) -> s | Err(_) -> "" end
-      assert (String.contains(idx, "href=\"/march/hello.html\""))
+      assert (String.contains(idx, "href=\"/march/posts/hello.html\""))
       let _ = Dir.rm_rf(tmp)
     end
     test "tag page links are base_url-prefixed" do
       let tmp = "/tmp/sigil_tagprefix_" ++ to_string(System.monotonic_time())
       let content_dir = Path.join(tmp, "content")
       let output_dir  = Path.join(tmp, "out")
-      let _ = Dir.mkdir_p(content_dir)
-      let _ = File.write(Path.join(content_dir, "hello.md"),
+      let posts_dir   = Path.join(content_dir, "posts")
+      let _ = Dir.mkdir_p(posts_dir)
+      let _ = File.write(Path.join(posts_dir, "hello.md"),
                 "---\ntitle: Hello\ndate: 2026-01-01\ntags: [x]\n---\nbody")
       let site = { content_dir: content_dir, output_dir: output_dir,
                    static_dir: "/tmp/no_static", title: "March",
@@ -1063,7 +1071,7 @@ mod TestSigil do
       let _ = Build.run(site)
       let tagp = match File.read(Path.join(Path.join(output_dir, "tag"), "x.html")) do
                  Ok(s) -> s | Err(_) -> "" end
-      assert (String.contains(tagp, "href=\"/march/hello.html\""))
+      assert (String.contains(tagp, "href=\"/march/posts/hello.html\""))
       let _ = Dir.rm_rf(tmp)
     end
   end
@@ -1073,15 +1081,16 @@ mod TestSigil do
       let tmp = "/tmp/sigil_baseurl_" ++ to_string(System.monotonic_time())
       let content_dir = Path.join(tmp, "content")
       let output_dir  = Path.join(tmp, "out")
-      let _ = Dir.mkdir_p(content_dir)
-      let _ = File.write(Path.join(content_dir, "post.md"), "---\ntitle: P\ndate: 2026-01-01\n---\nbody")
+      let posts_dir   = Path.join(content_dir, "posts")
+      let _ = Dir.mkdir_p(posts_dir)
+      let _ = File.write(Path.join(posts_dir, "post.md"), "---\ntitle: P\ndate: 2026-01-01\n---\nbody")
       let cfg = { content_dir: content_dir, output_dir: output_dir, static_dir: "/tmp/no_static", title: "March", base_url: "https://example.com/march/" }
       let _ = Build.run(cfg)
       let sm = match File.read(Path.join(output_dir, "sitemap.xml")) do Ok(s) -> s | Err(_) -> "" end
       let fd = match File.read(Path.join(output_dir, "feed.xml")) do Ok(s) -> s | Err(_) -> "" end
-      assert (String.contains(sm, "https://example.com/march/post.html"))
-      assert (not(String.contains(sm, "march//post")))
-      assert (not(String.contains(fd, "march//post")))
+      assert (String.contains(sm, "https://example.com/march/posts/post.html"))
+      assert (not(String.contains(sm, "march//posts")))
+      assert (not(String.contains(fd, "march//posts")))
       let _ = Dir.rm_rf(tmp)
     end
   end
