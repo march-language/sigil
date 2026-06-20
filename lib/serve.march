@@ -217,6 +217,15 @@ mod Serve do
     prun_with_selector(content, output, static, lib_dir, sel, port)
   end
 
+  -- Like run_with_selector but also applies a custom homepage IndexFn so the
+  -- initial serve build matches the production build.
+  fn run_with_selector_and_index(site : Config.Site, sel, lib_dir : String, idx_fn, port : Int) : Unit do
+    let content = "" ++ Config.site_content_dir(site)
+    let output  = "" ++ Config.site_output_dir(site)
+    let static  = "" ++ Config.site_static_dir(site)
+    prun_with_selector_and_index(content, output, static, lib_dir, sel, idx_fn, port)
+  end
+
   pfn prun_with_selector(content_dir : String, output_dir : String, static_dir : String,
                           lib_dir : String, sel, port : Int) : Unit do
     let _ = System.put_env("SIGIL_OUTPUT_DIR", output_dir)
@@ -229,6 +238,24 @@ mod Serve do
     let build_site = { content_dir: content_dir, output_dir: output_dir,
                        static_dir: static_dir, title: "", base_url: "" }
     let _ = Build.run_with_selector(build_site, sel)
+    let _ = println("[sigil] built")
+    let _ = task_spawn(fn _ -> Watcher.watch_env())
+    let _ = println("[sigil] serving http://localhost:" ++ int_to_string(port))
+    let _ = println("[sigil] press Ctrl+C to stop")
+    let _ = http_server_listen(port, 1000, 60, fn conn -> router(conn))
+  end
+
+  pfn prun_with_selector_and_index(content_dir : String, output_dir : String, static_dir : String,
+                                    lib_dir : String, sel, idx_fn, port : Int) : Unit do
+    let _ = System.put_env("SIGIL_OUTPUT_DIR", output_dir)
+    let _ = System.put_env("SIGIL_STATIC_DIR", static_dir)
+    let _ = System.put_env("SIGIL_CONTENT_DIR", content_dir)
+    let _ = if String.is_empty(lib_dir) do ()
+            else System.put_env("SIGIL_LIB_DIR", lib_dir)
+            end
+    let build_site = { content_dir: content_dir, output_dir: output_dir,
+                       static_dir: static_dir, title: "", base_url: "" }
+    let _ = Build.run_with_selector_and_index(build_site, sel, idx_fn)
     let _ = println("[sigil] built")
     let _ = task_spawn(fn _ -> Watcher.watch_env())
     let _ = println("[sigil] serving http://localhost:" ++ int_to_string(port))

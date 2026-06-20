@@ -221,6 +221,11 @@ mod Build do
     run_core_with_hooks(cfg, sel, false, hooks)
   end
 
+  -- Like run_with_selector but uses a custom SiteIndex.IndexFn for the homepage.
+  fn run_with_selector_and_index(cfg : Config.Site, sel : Selector, idx_fn) : Result(Unit, String) do
+    run_core_with_index(cfg, sel, true, idx_fn)
+  end
+
   -- Like run_with_selector_and_hooks but supplies a custom SiteIndex.IndexFn that
   -- generates the complete out/index.html document from the sorted post list.
   fn run_with_selector_hooks_and_index(cfg : Config.Site, sel : Selector, hooks : Hook.Set, idx_fn) : Result(Unit, String) do
