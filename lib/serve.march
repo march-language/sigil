@@ -49,10 +49,62 @@ mod Serve do
       HttpServer.text(conn, 404, "Not Found")
     else
       let output_dir = get_output_dir()
-      let path = Path.join(output_dir, slug ++ ".html")
+      -- Strip .html suffix so /posts/foo.html → out/posts/foo.html (not .html.html).
+      -- Without suffix, /posts/foo → out/posts/foo.html.
+      let bare = if String.ends_with(slug, ".html") do
+                   String.slice_bytes(slug, 0, String.byte_size(slug) - 5)
+                 else slug end
+      let path = Path.join(output_dir, bare ++ ".html")
       match File.read(path) do
       Err(_)   -> HttpServer.text(conn, 404, "Not Found")
       Ok(html) -> HttpServer.html(conn, 200, inject_reload(html))
+      end
+    end
+  end
+
+  -- Join a list of path segments into a single slash-separated string.
+  pfn join_segs(segs : List(String)) : String do
+    join_segs_go(segs, "")
+  end
+
+  pfn join_segs_go(segs : List(String), acc : String) : String do
+    match segs do
+    Nil -> acc
+    Cons(s, rest) ->
+      let next = if String.is_empty(acc) do s else acc ++ "/" ++ s end
+      join_segs_go(rest, next)
+    end
+  end
+
+  -- Infer MIME type from a file path's extension.
+  pfn mime_type(path : String) : String do
+    if String.ends_with(path, ".css") do "text/css"
+    else if String.ends_with(path, ".js") do "application/javascript"
+    else if String.ends_with(path, ".xml") do "application/xml; charset=utf-8"
+    else if String.ends_with(path, ".json") do "application/json"
+    else if String.ends_with(path, ".svg") do "image/svg+xml"
+    else if String.ends_with(path, ".ico") do "image/x-icon"
+    else "application/octet-stream"
+    end end end end end end
+  end
+
+  -- Serve a static asset (CSS, JS, XML, images, etc.) from the output directory.
+  pfn serve_static(slug : String, conn) do
+    if not(safe_slug(slug)) do
+      HttpServer.text(conn, 404, "Not Found")
+    else
+      let output_dir = get_output_dir()
+      let path = Path.join(output_dir, slug)
+      -- Compute MIME type before File.read so path is used sequentially
+      -- (Perceus sees two consecutive uses and correctly inserts IncRC; using
+      -- path inside a match arm after the scrutinee consumed it is less reliable).
+      let ct = mime_type(path)
+      match File.read(path) do
+      Err(_)   -> HttpServer.text(conn, 404, "Not Found")
+      Ok(body) -> do
+        let c = HttpServer.put_resp_header(conn, "content-type", ct)
+        HttpServer.send_resp(c, 200, body)
+      end
       end
     end
   end
@@ -89,8 +141,21 @@ mod Serve do
       match p do
       ["ws"] -> WebSocket.upgrade(conn, fn socket -> ws_handler(socket))
       []     -> serve_page("index", conn)
-      [slug] -> serve_page(slug, conn)
-      _      -> HttpServer.text(conn, 404, "Not Found")
+      segs   -> do
+        let slug = join_segs(segs)
+        -- .html paths → HTML page (with live-reload injection).
+        -- Everything else → try extension-less HTML page first, then static asset.
+        if String.ends_with(slug, ".html") do
+          serve_page(slug, conn)
+        else
+          let output_dir = get_output_dir()
+          let html_path  = Path.join(output_dir, slug ++ ".html")
+          match File.read(html_path) do
+          Ok(html) -> HttpServer.html(conn, 200, inject_reload(html))
+          Err(_)   -> serve_static(slug, conn)
+          end
+        end
+      end
       end
     else
       HttpServer.text(conn, 404, "Not Found")
