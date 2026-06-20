@@ -7,6 +7,9 @@ mod Serve do
     "<script>" ++
     "const __ws=new WebSocket('ws://'+location.host+'/ws');" ++
     "__ws.onmessage=function(){location.reload();};" ++
+    -- On close (server restarted after a layout rebuild), poll until the new
+    -- server is up, then reload.  1.5s gives forge a moment to start serving.
+    "__ws.onclose=function(){setTimeout(function(){location.reload();},1500);};" ++
     "</script>"
   end
 
@@ -133,6 +136,39 @@ mod Serve do
 
   fn run(site : Config.Site, port : Int) : Unit do
     prun(site.content_dir, site.output_dir, site.static_dir, port)
+  end
+
+  -- Like run/2 but uses a caller-supplied Selector for the initial build and
+  -- watches lib_dir for .march source changes.  When a source file changes,
+  -- the watcher runs `forge build` and exits so the new binary can be restarted.
+  -- Pass an empty string for lib_dir to disable source watching.
+  -- Note: content-change rebuilds during the session still use the default
+  -- selector; the custom selector is applied on the initial build and after
+  -- each full restart triggered by a layout source change.
+  fn run_with_selector(site : Config.Site, sel, lib_dir : String, port : Int) : Unit do
+    let content = "" ++ Config.site_content_dir(site)
+    let output  = "" ++ Config.site_output_dir(site)
+    let static  = "" ++ Config.site_static_dir(site)
+    prun_with_selector(content, output, static, lib_dir, sel, port)
+  end
+
+  pfn prun_with_selector(content_dir : String, output_dir : String, static_dir : String,
+                          lib_dir : String, sel, port : Int) : Unit do
+    let _ = System.put_env("SIGIL_OUTPUT_DIR", output_dir)
+    let _ = System.put_env("SIGIL_STATIC_DIR", static_dir)
+    let _ = System.put_env("SIGIL_CONTENT_DIR", content_dir)
+    let _ = if String.is_empty(lib_dir) do ()
+            else System.put_env("SIGIL_LIB_DIR", lib_dir)
+            end
+    -- Initial build with the caller-supplied selector.
+    let build_site = { content_dir: content_dir, output_dir: output_dir,
+                       static_dir: static_dir, title: "", base_url: "" }
+    let _ = Build.run_with_selector(build_site, sel)
+    let _ = println("[sigil] built")
+    let _ = task_spawn(fn _ -> Watcher.watch_env())
+    let _ = println("[sigil] serving http://localhost:" ++ int_to_string(port))
+    let _ = println("[sigil] press Ctrl+C to stop")
+    let _ = http_server_listen(port, 1000, 60, fn conn -> router(conn))
   end
 
 end

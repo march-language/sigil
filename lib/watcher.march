@@ -110,13 +110,45 @@ mod Watcher do
     end
   end
 
+  -- Run `forge build` in the current working directory.
+  -- Returns Ok(()) when the build exits 0, Err(msg) otherwise.
+  pfn rebuild_binary() : Result(Unit, String) do
+    let _ = println("[sigil] rebuilding binary with forge build...")
+    match Process.run("forge", Cons("build", Nil)) do
+    Err(e) -> Err("forge build failed to spawn: " ++ e)
+    Ok(r)  -> do
+      -- Extract all three fields before any conditional so Perceus sees all
+      -- uses of `r` at the same sequential scope level.
+      let ok  = Process.ok(r)
+      let out = Process.stdout(r)
+      let err = Process.stderr(r)
+      let _   = if String.is_empty(out) do () else println(out) end
+      if ok do
+        Ok(())
+      else
+        let _   = if String.is_empty(err) do () else println(err) end
+        Err("forge build exited non-zero")
+      end
+    end
+    end
+  end
+
+  -- Snapshot the current lib mtime so the first watch_loop iteration does not
+  -- false-positive a rebuild (lib_mtime would otherwise beat last_lib_mtime=0).
+  pfn initial_lib_mtime() : Int do
+    match System.env("SIGIL_LIB_DIR") do
+    Some(d) -> max_mtime_tree(d)
+    None    -> 0
+    end
+  end
+
   -- Watch for changes in content_dir. output_dir and static_dir are read from
   -- the process environment (SIGIL_OUTPUT_DIR, SIGIL_STATIC_DIR) on each poll
   -- iteration to avoid Perceus RC underflow: the Perceus pass does not correctly
   -- insert incrc for function-parameter strings used in both a function call
   -- (write_version) and a TCO back-edge in the same branch.
   fn watch(content_dir : String) : Unit do
-    watch_loop(content_dir, 0, 0, 0)
+    watch_loop(content_dir, 0, 0, initial_lib_mtime(), 0)
   end
 
   -- Zero-capture entry point for task_spawn.  Reads content_dir from the
@@ -128,38 +160,61 @@ mod Watcher do
     watch(get_content_dir())
   end
 
-  pfn watch_loop(content_dir : String, last_mtime : Int, last_count : Int, version : Int) : Unit do
-    -- Note: max_mtime and Build.run both recurse into subdirectories (Build.collect_md).
+  pfn watch_loop(content_dir : String, last_mtime : Int, last_count : Int, last_lib_mtime : Int, version : Int) : Unit do
     let _ = System.cmd("sleep", Cons("0.3", Nil))
-    -- Rebuild when the content tree (.md) OR the static asset tree changes — by
-    -- mtime (edits/adds) OR by file count (so deletions, which lower the max
-    -- mtime, still trigger a rebuild).
+
+    -- Poll content (.md files) and static asset tree for changes.
     let content_mtime = max_mtime(content_dir)
     let static_watch  = match System.env("SIGIL_STATIC_DIR") do Some(d) -> d | None -> "static" end
     let static_mtime  = max_mtime_tree(static_watch)
     let current = if content_mtime > static_mtime do content_mtime else static_mtime end
     let static_watch2 = match System.env("SIGIL_STATIC_DIR") do Some(d) -> d | None -> "static" end
     let count = count_tree(content_dir) + count_tree(static_watch2)
-    let changed = current > last_mtime || count != last_count
-    if changed do
-      let output_dir = get_output_dir()
-      let static_dir = match System.env("SIGIL_STATIC_DIR") do Some(d) -> d | None -> "static" end
-      let site = { content_dir: content_dir, output_dir: output_dir, static_dir: static_dir,
-                   title: "", base_url: "" }
-      match Build.run(site) do
-      Err(msg) ->
-        println("[sigil] build error: " ++ msg)
-        -- Don't advance the baselines so we retry on next change
-        watch_loop(content_dir, last_mtime, last_count, version)
+
+    -- Poll the lib source directory (SIGIL_LIB_DIR) for .march file changes.
+    -- A change means the binary must be recompiled; we rebuild then exit so the
+    -- user (or a watch loop) can restart the server with the new binary.
+    let lib_mtime = match System.env("SIGIL_LIB_DIR") do
+                    Some(d) -> max_mtime_tree(d)
+                    None    -> 0
+                    end
+    let lib_changed     = lib_mtime > last_lib_mtime
+    let content_changed = current > last_mtime || count != last_count
+
+    if lib_changed do
+      let _ = println("[sigil] layout source changed")
+      match rebuild_binary() do
+      Err(e) ->
+        let _ = println("[sigil] build error: " ++ e)
+        -- Advance last_lib_mtime so we don't re-trigger on the same mtime,
+        -- but keep serving with the old binary until a clean build lands.
+        watch_loop(content_dir, last_mtime, last_count, lib_mtime, version)
       Ok(_) ->
-        let next = version + 1
-        let od2 = get_output_dir()
-        let _ = write_version(od2, next)
-        println("[sigil] rebuilt (v" ++ int_to_string(next) ++ ")")
-        watch_loop(content_dir, current, count, next)
+        let _ = println("[sigil] binary rebuilt — restarting server")
+        -- Exit cleanly; the browser WebSocket reconnect script reloads the
+        -- page once the user (or a restart loop) brings the server back up.
+        Process.exit(0)
       end
     else
-      watch_loop(content_dir, last_mtime, last_count, version)
+      if content_changed do
+        let output_dir = get_output_dir()
+        let static_dir = match System.env("SIGIL_STATIC_DIR") do Some(d) -> d | None -> "static" end
+        let site = { content_dir: content_dir, output_dir: output_dir, static_dir: static_dir,
+                     title: "", base_url: "" }
+        match Build.run(site) do
+        Err(msg) ->
+          let _ = println("[sigil] build error: " ++ msg)
+          watch_loop(content_dir, last_mtime, last_count, last_lib_mtime, version)
+        Ok(_) ->
+          let next = version + 1
+          let od2 = get_output_dir()
+          let _ = write_version(od2, next)
+          let _ = println("[sigil] rebuilt (v" ++ int_to_string(next) ++ ")")
+          watch_loop(content_dir, current, count, last_lib_mtime, next)
+        end
+      else
+        watch_loop(content_dir, last_mtime, last_count, last_lib_mtime, version)
+      end
     end
   end
 
