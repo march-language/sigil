@@ -221,6 +221,34 @@ mod Build do
     run_core_with_hooks(cfg, sel, false, hooks)
   end
 
+  -- Like run_with_selector but uses a custom SiteIndex.IndexFn for the homepage.
+  fn run_with_selector_and_index(cfg : Config.Site, sel : Selector, idx_fn) : Result(Unit, String) do
+    run_core_with_index(cfg, sel, true, idx_fn)
+  end
+
+  -- Like run_with_selector_and_hooks but supplies a custom SiteIndex.IndexFn that
+  -- generates the complete out/index.html document from the sorted post list.
+  fn run_with_selector_hooks_and_index(cfg : Config.Site, sel : Selector, hooks : Hook.Set, idx_fn) : Result(Unit, String) do
+    run_core_with_hooks_and_index(cfg, sel, true, hooks, idx_fn)
+  end
+
+  pfn run_core_with_hooks_and_index(cfg : Config.Site, sel : Selector, gen_collections : Bool, hooks : Hook.Set, idx_fn) : Result(Unit, String) do
+    let before_hooks = hooks.before
+    let after_hooks  = hooks.after
+    match Hook.run_all(before_hooks) do
+    Err(e) -> Err("before hook: " ++ e)
+    Ok(_) ->
+      match run_core_with_index(cfg, sel, gen_collections, idx_fn) do
+      Err(e) -> Err(e)
+      Ok(_) ->
+        match Hook.run_all(after_hooks) do
+        Err(e) -> Err("after hook: " ++ e)
+        Ok(_)  -> Ok(())
+        end
+      end
+    end
+  end
+
   -- Private: run before hooks, delegate to run_core, run after hooks.
   -- Fields of hooks extracted before any match to keep Perceus counts correct.
   pfn run_core_with_hooks(cfg : Config.Site, sel : Selector, gen_collections : Bool, hooks : Hook.Set) : Result(Unit, String) do
@@ -241,7 +269,21 @@ mod Build do
   end
 
   -- gen_collections gates pass 2b: true → blog mode, false → docs mode.
+  -- Thin wrapper: delegates to run_core_impl with no custom index generator.
   fn run_core(cfg : Config.Site, sel : Selector, gen_collections : Bool) : Result(Unit, String) do
+    run_core_impl(cfg, sel, gen_collections, None)
+  end
+
+  -- Like run_core but uses a caller-supplied SiteIndex.IndexFn to generate the
+  -- homepage instead of the default bare-bones archive.
+  pfn run_core_with_index(cfg : Config.Site, sel : Selector, gen_collections : Bool, idx_fn) : Result(Unit, String) do
+    run_core_impl(cfg, sel, gen_collections, Some(idx_fn))
+  end
+
+  -- Private: the real two-pass build.  opt_idx_fn is threaded through to
+  -- Collections.build_collections → write_index so that a custom homepage
+  -- generator can be swapped in without duplicating the entire build pipeline.
+  pfn run_core_impl(cfg : Config.Site, sel : Selector, gen_collections : Bool, opt_idx_fn) : Result(Unit, String) do
     -- Two-level extraction to work around Perceus RC bugs:
     -- Level 1: extract each field from cfg EXACTLY ONCE (5 uses of cfg total,
     --   in flat sequential let-bindings so Perceus counts them correctly).
@@ -284,7 +326,7 @@ mod Build do
           Ok(_) -> do
             -- Pass 2b: generate collections only in blog mode.
             match (if gen_collections do
-                     Collections.build_collections(output_dir_p2b, site_title, base_url, idx)
+                     Collections.build_collections(output_dir_p2b, site_title, base_url, idx, opt_idx_fn)
                    else Ok(()) end) do
             Err(msg) -> Err(msg)
             Ok(_) -> Assets.copy(static_dir, output_dir_cpy)
