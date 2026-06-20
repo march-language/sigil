@@ -30,7 +30,7 @@ mod Collections do
   -- scope level inside the Ok arm, so Perceus correctly inserts IncRCs for each
   -- non-last use.  output_dir and base_url are borrowed throughout (Path.join
   -- borrows both args), so no IncRC is needed for them either.
-  fn build_collections(output_dir : String, site_title : String, base_url : String, idx) : Result(Unit, String) do
+  fn build_collections(output_dir : String, site_title : String, base_url : String, idx, opt_idx_fn) : Result(Unit, String) do
     match build_tag_dir(output_dir) do
     Err(e) -> Err(e)
     Ok(_) -> do
@@ -58,7 +58,7 @@ mod Collections do
         Ok(_) -> do
           match write_feed(output_dir, site_title, base_url, sorted) do
           Err(e) -> Err(e)
-          Ok(_) -> write_index(output_dir, prefix, site_title, sorted)
+          Ok(_) -> write_index(output_dir, prefix, site_title, sorted, opt_idx_fn)
           end
         end
         end
@@ -218,15 +218,22 @@ mod Collections do
   end
 
   -- ─── Home index page ─────────────────────────────────────────────────────────
-  -- Write out/index.html: a chronological archive listing every (non-draft) post,
-  -- newest first.  `entries` is the date-sorted index from build_collections.
-  pfn write_index(output_dir : String, prefix : String, site_title : String, entries) : Result(Unit, String) do
-    let heading = if String.is_empty(site_title) do "Home" else site_title end
-    let body_html =
-      IOList.from_string("<h1>" ++ Html.escape(heading) ++ "</h1><ul>")
-        |> IOList.append(index_items(prefix, entries))
-        |> IOList.append(IOList.from_string("</ul>"))
-    let page_html = Html.layout(heading, IOList.empty(), body_html)
+  -- Write out/index.html.  When opt_idx_fn is Some(f), calls f(entries) to get a
+  -- complete HTML document IOList (the caller is responsible for <html>, <head>,
+  -- etc.).  When None, falls back to the default bare-bones archive listing.
+  -- `entries` is the date-sorted index from build_collections.
+  pfn write_index(output_dir : String, prefix : String, site_title : String, entries, opt_idx_fn) : Result(Unit, String) do
+    let page_html = match opt_idx_fn do
+      Some(idx_fn) -> SiteIndex.apply_index_fn(idx_fn, entries)
+      None -> do
+        let heading = if String.is_empty(site_title) do "Home" else site_title end
+        let body_html =
+          IOList.from_string("<h1>" ++ Html.escape(heading) ++ "</h1><ul>")
+            |> IOList.append(index_items(prefix, entries))
+            |> IOList.append(IOList.from_string("</ul>"))
+        Html.layout(heading, IOList.empty(), body_html)
+      end
+    end
     let path = Path.join(output_dir, "index.html")
     match File.write(path, IOList.to_string(page_html)) do
     Err(e) -> Err("cannot write index: " ++ fmt_err(e))

@@ -113,4 +113,20 @@ mod SiteIndex do
 
   fn entry_excerpt(e : Entry) : String do "" ++ e.excerpt end
 
+  -- ── Custom index generator ───────────────────────────────────────────────────
+  -- Wraps a user-supplied function that receives the sorted post list and returns
+  -- a complete HTML document IOList for out/index.html.  Defined here (in the
+  -- leaf SiteIndex module) to avoid a circular dependency between Build and
+  -- Collections (both of which need this type).
+  type IndexFn = IndexFn(List(Entry) -> IOList)
+
+  -- Apply an IndexFn to a list of entries.  Defined here so callers in
+  -- Collections can invoke a user-supplied generator without pattern-matching on
+  -- the IndexFn constructor across modules.
+  fn apply_index_fn(idx_fn : IndexFn, entries : List(Entry)) : IOList do
+    match idx_fn do
+    IndexFn(f) -> f(entries)
+    end
+  end
+
 end
