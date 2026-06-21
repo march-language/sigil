@@ -1,0 +1,27 @@
+-- HTML generation helpers for site templates.
+
+mod SiteHtml do
+
+  -- Emit a stylesheet as a non-render-blocking preload.
+  -- Generates a <link rel="preload"> with onload swap and a <noscript> fallback,
+  -- so the font/CSS loads after paint rather than blocking the first render.
+  -- Use in place of a plain <link rel="stylesheet"> for any third-party CSS
+  -- (e.g. Google Fonts) where you can tolerate a brief flash of fallback fonts.
+  fn async_stylesheet(url : String) : IOList do
+    let url2 = "" ++ url
+    IOList.from_string(
+      "<link rel=\"preload\" href=\"" ++ Html.escape_attr(url) ++ "\" as=\"style\""
+      ++ " onload=\"this.onload=null;this.rel='stylesheet'\">"
+      ++ "<noscript><link rel=\"stylesheet\" href=\"" ++ Html.escape_attr(url2) ++ "\"></noscript>"
+    )
+  end
+
+  -- Emit a <time> element with a machine-readable datetime attribute.
+  -- date must be ISO-8601 format (YYYY-MM-DD); display is the human-readable label.
+  -- Example: SiteHtml.time_elem("2026-06-18", "Jun 18")
+  --   → <time datetime="2026-06-18">Jun 18</time>
+  fn time_elem(date : String, display : String) : String do
+    "<time datetime=\"" ++ Html.escape_attr(date) ++ "\">" ++ Html.escape(display) ++ "</time>"
+  end
+
+end

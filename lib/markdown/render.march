@@ -102,7 +102,10 @@ mod MdRender do
       |> IOList.append(render_inlines(inlines))
       |> IOList.append(IOList.from_string("</strong>"))
     Link(url, title, inlines) ->
-      IOList.from_string("<a href=\"" ++ Html.escape_attr(safe_url(url)) ++ "\"" ++ make_title_attr(title) ++ ">")
+      let safe   = safe_url(url)
+      let is_ext = String.starts_with(safe, "http://") || String.starts_with(safe, "https://")
+      let rel    = if is_ext do " rel=\"noopener noreferrer\"" else "" end
+      IOList.from_string("<a href=\"" ++ Html.escape_attr(safe) ++ "\"" ++ rel ++ make_title_attr(title) ++ ">")
       |> IOList.append(render_inlines(inlines))
       |> IOList.append(IOList.from_string("</a>"))
     Image(url, alt, title) ->
