@@ -27,31 +27,18 @@ mod Esbuild do
     Hook.march(fn _ -> bundle_minify(entry, output))
   end
 
-  -- Private: invoke npx esbuild.
-  -- entry and output are each used twice (log line + args), so we derive log
-  -- copies at the same sequential scope so Perceus sees all uses before any
-  -- match boundary and inserts the right IncRCs.
   pfn run(entry : String, output : String, minify : Bool) : Result(Unit, String) do
-    let entry_log  = "" ++ entry
-    let output_log = "" ++ output
-    let out_flag   = "--outfile=" ++ output
-    let _          = println("[esbuild] " ++ entry_log ++ " → " ++ output_log)
-    let args =
-      if minify do
-        Cons("esbuild", Cons(entry, Cons("--bundle", Cons("--minify", Cons("--legal-comments=none", Cons(out_flag, Nil))))))
-      else
-        Cons("esbuild", Cons(entry, Cons("--bundle", Cons(out_flag, Nil))))
-      end
-    match Process.run("npx", args) do
+    let minify_flags = if minify do " --minify --legal-comments=none" else "" end
+    let cmd = "npx esbuild " ++ entry ++ " --bundle" ++ minify_flags ++ " --outfile=" ++ output
+    let log_cmd = "" ++ cmd
+    let _ = println("[esbuild] " ++ log_cmd)
+    match Process.run("sh", Cons("-c", Cons(cmd, Nil))) do
     Err(_) -> Err("esbuild requires Node.js — install from nodejs.org")
     Ok(r)  -> do
       let ok  = Process.ok(r)
-      let out = Process.stdout(r)
       let err = Process.stderr(r)
-      let _   = if String.is_empty(out) do () else println(out) end
-      if ok do Ok(())
-      else Err("esbuild failed: " ++ err)
-      end
+      let _   = if String.is_empty(err) do () else println(err) end
+      if ok do Ok(()) else Err("esbuild failed") end
     end
     end
   end

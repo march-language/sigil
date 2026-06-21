@@ -405,19 +405,15 @@ mod Build do
   -- Spawn one task per path.  Accumulates handles in reverse spawn order;
   -- await_layout_tasks reverses back so errors surface in file-list order.
   -- RC note: output_dir, content_root, and sel each appear twice per iteration
-  -- (closure capture + recursive tail call).  Deriving the per-task copies
-  -- (out2, root2) via "" ++ at the same sequential scope makes both uses visible
-  -- to Perceus before any match boundary, so it inserts the right IncRCs.
-  -- sel2 = sel is an identity binding; the task closure captures sel2 and the
-  -- tail call passes sel, keeping both uses at the same scope level.
+  -- (closure capture + recursive tail call).  All uses are sequential at the
+  -- same scope level so Perceus inserts the right IncRCs automatically.
   pfn spawn_layout_tasks(output_dir : String, content_root : String, sel : Selector, paths : List(String), acc) do
     match paths do
     Nil -> acc
     Cons(src, rest) ->
       let out2  = "" ++ output_dir
       let root2 = "" ++ content_root
-      let sel2  = sel
-      let t     = task_spawn(fn _ -> build_page_layout(out2, root2, sel2, src))
+      let t     = task_spawn(fn _ -> build_page_layout(out2, root2, sel, src))
       spawn_layout_tasks(output_dir, content_root, sel, rest, Cons(t, acc))
     end
   end
