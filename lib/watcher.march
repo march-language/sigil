@@ -147,8 +147,19 @@ mod Watcher do
   -- iteration to avoid Perceus RC underflow: the Perceus pass does not correctly
   -- insert incrc for function-parameter strings used in both a function call
   -- (write_version) and a TCO back-edge in the same branch.
+  --
+  -- Snapshot the current mtime/count before starting the loop so the first
+  -- poll sees no change and does not immediately trigger a spurious rebuild.
+  -- Without this, last_mtime=0 guarantees content_changed=true on the first
+  -- iteration (all files have nonzero mtime), wiping out any IndexFn-generated
+  -- homepage that the caller built just before spawning the watcher.
   fn watch(content_dir : String) : Unit do
-    watch_loop(content_dir, 0, 0, initial_lib_mtime(), 0)
+    let static_dir    = match System.env("SIGIL_STATIC_DIR") do Some(d) -> d | None -> "static" end
+    let content_mtime = max_mtime(content_dir)
+    let static_mtime  = max_mtime_tree(static_dir)
+    let init_mtime    = if content_mtime > static_mtime do content_mtime else static_mtime end
+    let init_count    = count_tree(content_dir) + count_tree(static_dir)
+    watch_loop(content_dir, init_mtime, init_count, initial_lib_mtime(), 0)
   end
 
   -- Zero-capture entry point for task_spawn.  Reads content_dir from the

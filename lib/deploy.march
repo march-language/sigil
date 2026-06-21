@@ -1,0 +1,46 @@
+-- Deployment helpers for Sigil SSG sites.
+
+mod Deploy do
+
+  needs IO.Console
+
+  -- Deploy the build output directory to a Cloudflare Pages project.
+  -- Requires `wrangler` to be installed and authenticated:
+  --   npm install -g wrangler
+  --   wrangler login
+  -- Equivalent to: wrangler pages deploy <output_dir> --project-name <project>
+  fn cloudflare_pages(output_dir : String, project : String) : Result(Unit, String) do
+    let _ = println("[deploy] cloudflare pages → " ++ project)
+    let args = Cons("pages", Cons("deploy", Cons(output_dir, Cons("--project-name", Cons(project, Nil)))))
+    match Process.run("wrangler", args) do
+    Err(_) -> do
+      let install_cmd =
+        if File.exists("/opt/homebrew/bin/brew") || File.exists("/usr/local/bin/brew") do
+          "brew install wrangler"
+        else
+          "npm install -g wrangler"
+        end
+      Err("wrangler not found — install with: " ++ install_cmd)
+    end
+    Ok(r)  -> do
+      let ok  = Process.ok(r)
+      let out = Process.stdout(r)
+      let err = Process.stderr(r)
+      let _   = if String.is_empty(out) do () else println(out) end
+      let _   = if String.is_empty(err) do () else println(err) end
+      if ok do Ok(())
+      else Err("wrangler pages deploy failed")
+      end
+    end
+    end
+  end
+
+  -- Returns a Hook.Fn that deploys to Cloudflare Pages when invoked.
+  -- Add to Hook.Set.after to deploy automatically after each successful build:
+  --   let hooks = { before: Nil, after: Cons(Deploy.cloudflare_pages_hook("out", "my-site"), Nil) }
+  --   Build.run_with_selector_and_hooks(cfg, selector(), hooks)
+  fn cloudflare_pages_hook(output_dir : String, project : String) do
+    Hook.march(fn _ -> cloudflare_pages(output_dir, project))
+  end
+
+end
