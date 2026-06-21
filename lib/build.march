@@ -393,27 +393,46 @@ mod Build do
     end
   end
 
-  -- ─── Pass 2a: render pages ───────────────────────────────────────────────────
-  -- RC note: sel is owned (consumed by build_page_layout on each iteration).
-  -- Perceus cannot see the second use of sel (in the recursive call) across the
-  -- match-arm boundary when it appears as the scrutinee's argument.  We extract
-  -- a continuation closure BEFORE the first consuming call so that both uses of
-  -- sel are visible at the same scope level; Perceus then inserts IncRC(sel) for
-  -- the closure capture, keeping sel alive for the recursive step.
-  -- content_root is borrowed (only read by rel_slug); thread it alongside
-  -- output_dir through the loop and into the recursive continuation.
+  -- ─── Pass 2a: render pages (parallel) ──────────────────────────────────────
+  -- Fan out one green thread per page, then collect results.  All tasks run
+  -- concurrently; wall-clock time is bounded by the slowest single file rather
+  -- than the sum.  Order of error reporting is spawn order (first file first).
   pfn build_all_layout(output_dir : String, content_root : String, sel : Selector, paths : List(String)) : Result(Unit, String) do
+    let tasks = spawn_layout_tasks(output_dir, content_root, sel, paths, Nil)
+    await_layout_tasks(tasks)
+  end
+
+  -- Spawn one task per path.  Accumulates handles in reverse spawn order;
+  -- await_layout_tasks reverses back so errors surface in file-list order.
+  -- RC note: output_dir, content_root, and sel each appear twice per iteration
+  -- (closure capture + recursive tail call).  Deriving the per-task copies
+  -- (out2, root2) via "" ++ at the same sequential scope makes both uses visible
+  -- to Perceus before any match boundary, so it inserts the right IncRCs.
+  -- sel2 = sel is an identity binding; the task closure captures sel2 and the
+  -- tail call passes sel, keeping both uses at the same scope level.
+  pfn spawn_layout_tasks(output_dir : String, content_root : String, sel : Selector, paths : List(String), acc) do
     match paths do
-    Nil -> Ok(())
-    Cons(src, rest) -> do
-      -- Capture the recursive continuation BEFORE sel is consumed by build_page_layout.
-      -- Both uses of sel are now visible at the same let-binding level.
-      let recurse = fn _ -> build_all_layout(output_dir, content_root, sel, rest)
-      match build_page_layout(output_dir, content_root, sel, src) do
-      Err(msg) -> Err(msg)
-      Ok(_) -> recurse(())
-      end
+    Nil -> acc
+    Cons(src, rest) ->
+      let out2  = "" ++ output_dir
+      let root2 = "" ++ content_root
+      let sel2  = sel
+      let t     = task_spawn(fn _ -> build_page_layout(out2, root2, sel2, src))
+      spawn_layout_tasks(output_dir, content_root, sel, rest, Cons(t, acc))
     end
+  end
+
+  -- Await each handle in reverse-accumulation order (= original file order).
+  -- Fail fast on the first error; remaining tasks continue to run in the
+  -- background but their handles are dropped.
+  pfn await_layout_tasks(tasks) : Result(Unit, String) do
+    match tasks do
+    Nil -> Ok(())
+    Cons(t, rest) ->
+      match task_await(t) do
+      Err(e) -> Err(e)
+      Ok(_)  -> await_layout_tasks(rest)
+      end
     end
   end
 
