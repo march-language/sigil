@@ -1,0 +1,59 @@
+-- CSS and JS bundling via esbuild.
+-- Requires Node.js; esbuild itself is invoked via npx so no global install is needed.
+
+mod Esbuild do
+
+  needs IO.Console
+
+  -- Bundle an entry point (CSS or JS) to an output file.
+  -- Equivalent to: npx esbuild <entry> --bundle --outfile=<output>
+  fn bundle(entry : String, output : String) : Result(Unit, String) do
+    run(entry, output, false)
+  end
+
+  -- Bundle with minification for production builds.
+  -- Adds: --minify --legal-comments=none
+  fn bundle_minify(entry : String, output : String) : Result(Unit, String) do
+    run(entry, output, true)
+  end
+
+  -- Returns a Hook.Fn that bundles on invoke.  Use in Hook.Set.before.
+  fn hook(entry : String, output : String) do
+    Hook.march(fn _ -> bundle(entry, output))
+  end
+
+  -- Returns a Hook.Fn that bundles with minification on invoke.
+  fn minify_hook(entry : String, output : String) do
+    Hook.march(fn _ -> bundle_minify(entry, output))
+  end
+
+  -- Private: invoke npx esbuild.
+  -- entry and output are each used twice (log line + args), so we derive log
+  -- copies at the same sequential scope so Perceus sees all uses before any
+  -- match boundary and inserts the right IncRCs.
+  pfn run(entry : String, output : String, minify : Bool) : Result(Unit, String) do
+    let entry_log  = "" ++ entry
+    let output_log = "" ++ output
+    let out_flag   = "--outfile=" ++ output
+    let _          = println("[esbuild] " ++ entry_log ++ " → " ++ output_log)
+    let args =
+      if minify do
+        Cons("esbuild", Cons(entry, Cons("--bundle", Cons("--minify", Cons("--legal-comments=none", Cons(out_flag, Nil))))))
+      else
+        Cons("esbuild", Cons(entry, Cons("--bundle", Cons(out_flag, Nil))))
+      end
+    match Process.run("npx", args) do
+    Err(_) -> Err("esbuild requires Node.js — install from nodejs.org")
+    Ok(r)  -> do
+      let ok  = Process.ok(r)
+      let out = Process.stdout(r)
+      let err = Process.stderr(r)
+      let _   = if String.is_empty(out) do () else println(out) end
+      if ok do Ok(())
+      else Err("esbuild failed: " ++ err)
+      end
+    end
+    end
+  end
+
+end
