@@ -13,7 +13,15 @@ mod Deploy do
     let _ = println("[deploy] cloudflare pages → " ++ project)
     let args = Cons("pages", Cons("deploy", Cons(output_dir, Cons("--project-name", Cons(project, Nil)))))
     match Process.run("wrangler", args) do
-    Err(e) -> Err("wrangler not found (install with `npm install -g wrangler`): " ++ e)
+    Err(_) -> do
+      let install_cmd =
+        if File.exists("/opt/homebrew/bin/brew") || File.exists("/usr/local/bin/brew") do
+          "brew install wrangler"
+        else
+          "npm install -g wrangler"
+        end
+      Err("wrangler not found — install with: " ++ install_cmd)
+    end
     Ok(r)  -> do
       let ok  = Process.ok(r)
       let out = Process.stdout(r)
