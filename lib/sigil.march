@@ -3,19 +3,22 @@
 
 mod Ssg do
 
+  needs IO.Console
+
   fn parse_args(argv : List(String)) : Result(Config.Site, String) do
     -- Drop the executable (and the script path in interpreted mode).
     -- Both are absolute paths starting with '/'.
     let args = drop_paths(argv)
     -- RC note: defaults is a cross-module record.  Extract all fields with "" ++
-    -- BEFORE the match so defaults is fully consumed at a single let-binding scope
-    -- and Perceus does not attempt to DecRC it inside individual match arms.
+    -- at the same scope level before the match so Perceus counts all uses of
+    -- `defaults` correctly (variables used across match-arm boundaries can be
+    -- miscounted by the native Perceus pass).
     let defaults     = Config.default()
-    let def_content  = defaults.content_dir
-    let def_output   = defaults.output_dir
-    let def_static   = defaults.static_dir
-    let def_title    = defaults.title
-    let def_base     = defaults.base_url
+    let def_content  = "" ++ defaults.content_dir
+    let def_output   = "" ++ defaults.output_dir
+    let def_static   = "" ++ defaults.static_dir
+    let def_title    = "" ++ defaults.title
+    let def_base     = "" ++ defaults.base_url
     match args do
     Nil ->
       Err("usage: sigil <new DIR|build|serve> [--content-dir DIR] [--output-dir DIR] [--static-dir DIR] [--title TITLE] [--base-url URL]")
@@ -24,11 +27,11 @@ mod Ssg do
       match SiteConfig.load(SiteConfig.default_path(), def_content, def_output, def_static, def_title, def_base) do
       Err(msg) -> Err(msg)
       Ok(seed) ->
-        let s_content = Config.site_content_dir(seed)
-        let s_output  = Config.site_output_dir(seed)
-        let s_static  = Config.site_static_dir(seed)
-        let s_title   = Config.site_title(seed)
-        let s_base    = Config.site_base_url(seed)
+        let s_content = "" ++ Config.site_content_dir(seed)
+        let s_output  = "" ++ Config.site_output_dir(seed)
+        let s_static  = "" ++ Config.site_static_dir(seed)
+        let s_title   = "" ++ Config.site_title(seed)
+        let s_base    = "" ++ Config.site_base_url(seed)
         parse_flags(flags, s_content, s_output, s_static, s_title, s_base)
       end
     Cons(cmd, _) ->
@@ -81,6 +84,16 @@ mod Ssg do
     -- System.argv() called in each branch separately to avoid RC issues.
     let args = drop_paths(System.argv())
     match args do
+    Cons("new", Cons("post", Cons(title, _))) ->
+      let ts   = DateTime.now()
+      let dt   = DateTime.from_timestamp(ts)
+      let date = DateTime.format(dt, "%Y-%m-%d")
+      match Scaffold.create_post(title, date) do
+      Err(msg)     -> println("error: " ++ msg)
+      Ok(filepath) -> println("created: " ++ filepath)
+      end
+    Cons("new", Cons("post", Nil)) ->
+      println("usage: sigil new post \"Title\"")
     Cons("new", Cons(dir, _)) ->
       -- Independent copy for the success message: Scaffold.create consumes `dir`,
       -- so capture the path for next_steps before that consuming call.
@@ -92,24 +105,24 @@ mod Ssg do
         println(Scaffold.next_steps(dir_msg))
       end
     Cons("new", Nil) ->
-      println("usage: sigil new DIR")
+      println("usage: sigil new <DIR | post \"Title\">")
     Cons("serve", flags) ->
       let d = Config.default()
-      let d_content = d.content_dir
-      let d_output  = d.output_dir
-      let d_static  = d.static_dir
-      let d_title   = d.title
-      let d_base    = d.base_url
+      let d_content = "" ++ d.content_dir
+      let d_output  = "" ++ d.output_dir
+      let d_static  = "" ++ d.static_dir
+      let d_title   = "" ++ d.title
+      let d_base    = "" ++ d.base_url
       -- Seed defaults from sigil.toml (if present), then let CLI flags override.
       match SiteConfig.load(SiteConfig.default_path(), d_content, d_output, d_static, d_title, d_base) do
       Err(msg) ->
         println(msg)
       Ok(seed) ->
-        let s_content = Config.site_content_dir(seed)
-        let s_output  = Config.site_output_dir(seed)
-        let s_static  = Config.site_static_dir(seed)
-        let s_title   = Config.site_title(seed)
-        let s_base    = Config.site_base_url(seed)
+        let s_content = "" ++ Config.site_content_dir(seed)
+        let s_output  = "" ++ Config.site_output_dir(seed)
+        let s_static  = "" ++ Config.site_static_dir(seed)
+        let s_title   = "" ++ Config.site_title(seed)
+        let s_base    = "" ++ Config.site_base_url(seed)
         match parse_flags(flags, s_content, s_output, s_static, s_title, s_base) do
         Err(msg) ->
           println(msg)

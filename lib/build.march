@@ -1,5 +1,8 @@
 mod Build do
 
+  needs IO.Console
+  needs IO.Spawn
+
   -- Wrapper for a user-supplied layout function.
   -- Uses a nominal type to avoid March's curried function-type annotation ambiguity.
   -- Site-wide metadata is intentionally NOT part of the function type: the caller
@@ -15,6 +18,7 @@ mod Build do
   -- so it must obey the same Perceus discipline (capture the recursive
   -- continuation BEFORE the selector is consumed on each iteration).
   type Selector = Selector(String -> LayoutFn)
+
 
   pfn fmt_err(e) : String do
     to_string(e)
@@ -208,55 +212,124 @@ mod Build do
     run_pages_with_selector(cfg, const_selector(lf))
   end
 
+  -- Like run_with_selector but fires Hook.Fn lists before and after the build.
+  -- Existing callers of run_with_selector / run_with_layout are unaffected.
+  fn run_with_selector_and_hooks(cfg : Config.Site, sel : Selector, hooks : Hook.Set) : Result(Unit, String) do
+    run_core_with_hooks(cfg, sel, true, hooks)
+  end
+
+  fn run_pages_with_selector_and_hooks(cfg : Config.Site, sel : Selector, hooks : Hook.Set) : Result(Unit, String) do
+    run_core_with_hooks(cfg, sel, false, hooks)
+  end
+
+  -- Like run_with_selector but uses a custom SiteIndex.IndexFn for the homepage.
+  fn run_with_selector_and_index(cfg : Config.Site, sel : Selector, idx_fn) : Result(Unit, String) do
+    run_core_with_index(cfg, sel, true, idx_fn)
+  end
+
+  -- Like run_with_selector_and_hooks but supplies a custom SiteIndex.IndexFn that
+  -- generates the complete out/index.html document from the sorted post list.
+  fn run_with_selector_hooks_and_index(cfg : Config.Site, sel : Selector, hooks : Hook.Set, idx_fn) : Result(Unit, String) do
+    run_core_with_hooks_and_index(cfg, sel, true, hooks, idx_fn)
+  end
+
+  pfn run_core_with_hooks_and_index(cfg : Config.Site, sel : Selector, gen_collections : Bool, hooks : Hook.Set, idx_fn) : Result(Unit, String) do
+    let before_hooks = hooks.before
+    let after_hooks  = hooks.after
+    match Hook.run_all(before_hooks) do
+    Err(e) -> Err("before hook: " ++ e)
+    Ok(_) ->
+      match run_core_with_index(cfg, sel, gen_collections, idx_fn) do
+      Err(e) -> Err(e)
+      Ok(_) ->
+        match Hook.run_all(after_hooks) do
+        Err(e) -> Err("after hook: " ++ e)
+        Ok(_)  -> Ok(())
+        end
+      end
+    end
+  end
+
+  -- Private: run before hooks, delegate to run_core, run after hooks.
+  -- Fields of hooks extracted before any match to keep Perceus counts correct.
+  pfn run_core_with_hooks(cfg : Config.Site, sel : Selector, gen_collections : Bool, hooks : Hook.Set) : Result(Unit, String) do
+    let before_hooks = hooks.before
+    let after_hooks  = hooks.after
+    match Hook.run_all(before_hooks) do
+    Err(e) -> Err("before hook: " ++ e)
+    Ok(_) ->
+      match run_core(cfg, sel, gen_collections) do
+      Err(e) -> Err(e)
+      Ok(_) ->
+        match Hook.run_all(after_hooks) do
+        Err(e) -> Err("after hook: " ++ e)
+        Ok(_)  -> Ok(())
+        end
+      end
+    end
+  end
+
   -- gen_collections gates pass 2b: true → blog mode, false → docs mode.
+  -- Thin wrapper: delegates to run_core_impl with no custom index generator.
   fn run_core(cfg : Config.Site, sel : Selector, gen_collections : Bool) : Result(Unit, String) do
-    -- mkdir consumes its argument; derive a dedicated binding for it.
-    let output_dir_mk = Config.site_output_dir(cfg)
+    run_core_impl(cfg, sel, gen_collections, None)
+  end
+
+  -- Like run_core but uses a caller-supplied SiteIndex.IndexFn to generate the
+  -- homepage instead of the default bare-bones archive.
+  pfn run_core_with_index(cfg : Config.Site, sel : Selector, gen_collections : Bool, idx_fn) : Result(Unit, String) do
+    run_core_impl(cfg, sel, gen_collections, Some(idx_fn))
+  end
+
+  -- Private: the real two-pass build.  opt_idx_fn is threaded through to
+  -- Collections.build_collections → write_index so that a custom homepage
+  -- generator can be swapped in without duplicating the entire build pipeline.
+  pfn run_core_impl(cfg : Config.Site, sel : Selector, gen_collections : Bool, opt_idx_fn) : Result(Unit, String) do
+    -- Two-level extraction to work around Perceus RC bugs:
+    -- Level 1: extract each field from cfg EXACTLY ONCE (5 uses of cfg total,
+    --   in flat sequential let-bindings so Perceus counts them correctly).
+    -- Level 2: derive all per-use owned copies from those owned Strings before
+    --   any match branching (Perceus miscounts uses across match-arm boundaries).
+    let content_dir = "" ++ Config.site_content_dir(cfg)
+    let output_dir  = "" ++ Config.site_output_dir(cfg)
+    let static_dir  = "" ++ Config.site_static_dir(cfg)
+    let site_title  = "" ++ Config.site_title(cfg)
+    let base_url    = "" ++ Config.site_base_url(cfg)
+    -- Level 2: per-use copies, all derived before the first match.
+    let content_dir_p1  = "" ++ content_dir
+    let content_dir_r1  = "" ++ content_dir
+    let content_root_p1 = "" ++ content_dir
+    let content_dir_p2  = "" ++ content_dir
+    let content_dir_r2  = "" ++ content_dir
+    let content_root_p2 = "" ++ content_dir
+    let output_dir_mk   = "" ++ output_dir
+    let output_dir_p2a  = "" ++ output_dir
+    let output_dir_p2b  = "" ++ output_dir
+    let output_dir_cpy  = "" ++ output_dir
     match Dir.mkdir_p(output_dir_mk) do
     Err(e) -> Err("cannot create output dir: " ++ fmt_err(e))
     Ok(_) -> do
       -- Pass 1: list content_dir and build the site index.
-      -- Dir.list_full consumes content_dir_p1; derive a fresh copy.
-      let content_dir_p1 = Config.site_content_dir(cfg)
       match Dir.list_full(content_dir_p1) do
       Err(e) -> Err("cannot list content dir: " ++ fmt_err(e))
       Ok(_) -> do
-        -- list_full above only validates the dir exists; collect_md does the
-        -- real recursive gather on a fresh owned copy of content_dir.
-        let content_dir_r1 = Config.site_content_dir(cfg)
+        -- collect_md does the real recursive gather on a fresh owned copy.
         let md_paths_p1 = collect_md(content_dir_r1)
-        -- content_root keys the index slugs by their path relative to the content
-        -- dir so links/collections match the nested output paths.
-        let content_root_p1 = Config.site_content_dir(cfg)
         let idx         = collect_index(content_root_p1, md_paths_p1, SiteIndex.empty())
         -- Pass 2a: list content_dir again for the render pass.
-        -- Each Dir.list_full is a separate consume; fresh binding required.
-        let content_dir_p2 = Config.site_content_dir(cfg)
         match Dir.list_full(content_dir_p2) do
         Err(e) -> Err("cannot list content dir (pass 2): " ++ fmt_err(e))
         Ok(_) -> do
-          let content_dir_r2 = Config.site_content_dir(cfg)
           let md_paths_p2 = collect_md(content_dir_r2)
-          let content_root_p2 = Config.site_content_dir(cfg)
-          -- Derive all remaining owned values from cfg before the consuming calls.
-          let output_dir_p2a = Config.site_output_dir(cfg)
-          let output_dir_p2b = Config.site_output_dir(cfg)
-          let output_dir_cpy = Config.site_output_dir(cfg)
-          let site_title     = Config.site_title(cfg)
-          let base_url       = Config.site_base_url(cfg)
-          let static_dir     = Config.site_static_dir(cfg)
-          -- Pass 2a: render pages (build_all_layout borrows output_dir_p2a).
+          -- Pass 2a: render pages.
           match build_all_layout(output_dir_p2a, content_root_p2, sel, md_paths_p2) do
           Err(msg) -> Err(msg)
           Ok(_) -> do
-            -- Pass 2b: generate collections only in blog mode.  In docs mode the
-            -- conditional's else branch leaves idx/site_title/base_url/output_dir_p2b
-            -- unconsumed; Perceus inserts their DecRCs there automatically.
+            -- Pass 2b: generate collections only in blog mode.
             match (if gen_collections do
-                     Collections.build_collections(output_dir_p2b, site_title, base_url, idx)
+                     Collections.build_collections(output_dir_p2b, site_title, base_url, idx, opt_idx_fn)
                    else Ok(()) end) do
             Err(msg) -> Err(msg)
-            -- Assets.copy consumes both its args; use the dedicated copies.
             Ok(_) -> Assets.copy(static_dir, output_dir_cpy)
             end
           end
@@ -311,39 +384,52 @@ mod Build do
         -- RC note: meta is consumed by Page.meta_draft before the match arm that uses
         -- SiteIndex.add.  Capture the add continuation before the draft check so both
         -- uses of meta are visible at the same scope level.
-        let add_fn = fn _ -> SiteIndex.add(idx, slug, excerpt, meta)
+        let add_fn  = fn _ -> SiteIndex.add(idx, slug, excerpt, meta)
         let is_draft = Page.meta_draft(meta)
-        match is_draft do
-        true -> idx
-        false -> add_fn(())
-        end
+        let is_post  = String.starts_with(slug, "posts/")
+        if is_draft || not(is_post) do idx else add_fn(()) end
       end
       end
     end
     end
   end
 
-  -- ─── Pass 2a: render pages ───────────────────────────────────────────────────
-  -- RC note: sel is owned (consumed by build_page_layout on each iteration).
-  -- Perceus cannot see the second use of sel (in the recursive call) across the
-  -- match-arm boundary when it appears as the scrutinee's argument.  We extract
-  -- a continuation closure BEFORE the first consuming call so that both uses of
-  -- sel are visible at the same scope level; Perceus then inserts IncRC(sel) for
-  -- the closure capture, keeping sel alive for the recursive step.
-  -- content_root is borrowed (only read by rel_slug); thread it alongside
-  -- output_dir through the loop and into the recursive continuation.
+  -- ─── Pass 2a: render pages (parallel) ──────────────────────────────────────
+  -- Fan out one green thread per page, then collect results.  All tasks run
+  -- concurrently; wall-clock time is bounded by the slowest single file rather
+  -- than the sum.  Order of error reporting is spawn order (first file first).
   pfn build_all_layout(output_dir : String, content_root : String, sel : Selector, paths : List(String)) : Result(Unit, String) do
+    let tasks = spawn_layout_tasks(output_dir, content_root, sel, paths, Nil)
+    await_layout_tasks(tasks)
+  end
+
+  -- Spawn one task per path.  Accumulates handles in reverse spawn order;
+  -- await_layout_tasks reverses back so errors surface in file-list order.
+  -- RC note: output_dir, content_root, and sel each appear twice per iteration
+  -- (closure capture + recursive tail call).  All uses are sequential at the
+  -- same scope level so Perceus inserts the right IncRCs automatically.
+  pfn spawn_layout_tasks(output_dir : String, content_root : String, sel : Selector, paths : List(String), acc) do
     match paths do
-    Nil -> Ok(())
-    Cons(src, rest) -> do
-      -- Capture the recursive continuation BEFORE sel is consumed by build_page_layout.
-      -- Both uses of sel are now visible at the same let-binding level.
-      let recurse = fn _ -> build_all_layout(output_dir, content_root, sel, rest)
-      match build_page_layout(output_dir, content_root, sel, src) do
-      Err(msg) -> Err(msg)
-      Ok(_) -> recurse(())
-      end
+    Nil -> acc
+    Cons(src, rest) ->
+      let out2  = "" ++ output_dir
+      let root2 = "" ++ content_root
+      let t     = task_spawn(fn _ -> build_page_layout(out2, root2, sel, src))
+      spawn_layout_tasks(output_dir, content_root, sel, rest, Cons(t, acc))
     end
+  end
+
+  -- Await each handle in reverse-accumulation order (= original file order).
+  -- Fail fast on the first error; remaining tasks continue to run in the
+  -- background but their handles are dropped.
+  pfn await_layout_tasks(tasks) : Result(Unit, String) do
+    match tasks do
+    Nil -> Ok(())
+    Cons(t, rest) ->
+      match task_await(t) do
+      Err(e) -> Err(e)
+      Ok(_)  -> await_layout_tasks(rest)
+      end
     end
   end
 
@@ -493,23 +579,26 @@ mod Build do
   -- `Text` is qualified as `Inline.Text` because the stdlib Xml module also
   -- defines a `Text` constructor (on XmlNode); a bare `Text` pattern is
   -- ambiguous.
+  -- Worklist accumulator: inner inline lists (Emph/Strong/Link children) are
+  -- prepended to the remaining work so every call is in tail position.
   pfn inlines_to_text(inlines : List(Inline)) : String do
-    match inlines do
-    Nil -> ""
-    Cons(inline, rest) -> do
-      let piece =
-        match inline do
-        Inline.Text(s) -> s
-        Code(s) -> s
-        Emph(inner) -> inlines_to_text(inner)
-        Strong(inner) -> inlines_to_text(inner)
-        Link(_, _, inner) -> inlines_to_text(inner)
-        Image(_, alt, _) -> alt
-        HardBreak -> " "
-        SoftBreak -> " "
-        end
-      piece ++ inlines_to_text(rest)
-    end
+    inlines_to_text_go(inlines, "")
+  end
+
+  pfn inlines_to_text_go(work : List(Inline), acc : String) : String do
+    match work do
+    Nil -> acc
+    Cons(inline, rest) ->
+      match inline do
+      Inline.Text(s)      -> inlines_to_text_go(rest, acc ++ s)
+      Code(s)             -> inlines_to_text_go(rest, acc ++ s)
+      Emph(inner)         -> inlines_to_text_go(List.append(inner, rest), acc)
+      Strong(inner)       -> inlines_to_text_go(List.append(inner, rest), acc)
+      Link(_, _, inner)   -> inlines_to_text_go(List.append(inner, rest), acc)
+      Image(_, alt, _)    -> inlines_to_text_go(rest, acc ++ alt)
+      HardBreak           -> inlines_to_text_go(rest, acc ++ " ")
+      SoftBreak           -> inlines_to_text_go(rest, acc ++ " ")
+      end
     end
   end
 

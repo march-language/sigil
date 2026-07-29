@@ -406,11 +406,17 @@ mod MdBlock do
     end end
   end
 
-  -- Map a list of cell strings through MdInline.parse.
+  -- Map a list of cell strings through MdInline.parse (accumulator + reverse for tail recursion).
   pfn map_parse_cells(cells : List(String), defs : List((String, String, String))) : List(List(Inline)) do
+    List.reverse(map_parse_cells_acc(cells, defs, Nil))
+  end
+
+  pfn map_parse_cells_acc(cells : List(String), defs : List((String, String, String)), acc : List(List(Inline))) : List(List(Inline)) do
     match cells do
-    Nil -> Nil
-    Cons(c, rest) -> Cons(MdInline.parse_refs(String.trim(c), defs), map_parse_cells(rest, defs))
+    Nil -> acc
+    Cons(c, rest) ->
+      let parsed = MdInline.parse_refs(String.trim(c), defs)
+      map_parse_cells_acc(rest, defs, Cons(parsed, acc))
     end
   end
 
