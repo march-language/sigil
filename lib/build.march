@@ -1,6 +1,7 @@
 mod Build do
 
   needs IO.Console
+  needs IO.Spawn
 
   -- Wrapper for a user-supplied layout function.
   -- Uses a nominal type to avoid March's curried function-type annotation ambiguity.

@@ -4,6 +4,8 @@
 
 mod Hook do
 
+  needs IO.Console
+
   -- A build hook: a deferred Unit → Result action.  Use Hook.shell or
   -- Hook.march to construct one; use Hook.run / Hook.run_all to execute.
   type Fn = Fn(Unit -> Result(Unit, String))

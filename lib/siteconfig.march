@@ -23,11 +23,36 @@
 -- accumulator drops trailing fields.  A flat line scan that only threads Strings
 -- and binds plain tuples (the same shape as Page.decode / FrontMatter.split, which
 -- compile correctly) sidesteps all of those compiler bugs.
+--
+-- `scan`'s accumulator is bundled into a SINGLE record (`Acc`), not threaded as
+-- separate String parameters: a self-recursive call whose argument list mixes a
+-- freshly-computed value (e.g. `header_name(t)`, from `String.slice_bytes`) with
+-- one or more OTHER arguments merely forwarded unchanged crashes the compiled
+-- backend (bad-pointer read in `march_incrc`/`march_string_eq` — a double-free
+-- from a TIR drop inserted after the tail call, freeing an argument the call
+-- already consumed). Reproduces even with only 2 total scan params (one replaced,
+-- one forwarded) and with the forwarded value being a record instead of a String,
+-- so it isn't about String specifically or about argument count past some
+-- threshold — it's specifically "replaced + forwarded together". Passing exactly
+-- ONE argument that is always freshly reconstructed as a whole (copying forward
+-- whichever fields don't change) sidesteps it.
 
 mod SiteConfig do
 
   -- Default config file name, looked up relative to the current working dir.
   fn default_path() : String do "sigil.toml" end
+
+  -- Scan accumulator: current [section] plus the five target Site fields,
+  -- bundled into one value so the recursive `scan` call always passes exactly
+  -- one freshly-reconstructed argument (see the module-level implementation note).
+  type Acc = {
+    section     : String,
+    content_dir : String,
+    output_dir  : String,
+    static_dir  : String,
+    title       : String,
+    base_url    : String
+  }
 
   -- Load `path` (e.g. "sigil.toml") and produce a Site seeded from it.
   -- A missing or unreadable file yields the unchanged defaults.
@@ -40,7 +65,9 @@ mod SiteConfig do
              title: def_title, base_url: def_base })
       Ok(src) ->
         let lines = String.split(src, "\n")
-        Ok(scan(lines, "", def_content, def_output, def_static, def_title, def_base))
+        let acc = { section: "", content_dir: def_content, output_dir: def_output,
+                    static_dir: def_static, title: def_title, base_url: def_base }
+        Ok(scan(lines, acc))
       end
     else
       Ok({ content_dir: def_content, output_dir: def_output, static_dir: def_static,
@@ -48,30 +75,24 @@ mod SiteConfig do
     end
   end
 
-  -- Scan the config line by line, tracking the current [section] and threading the
-  -- five target fields as plain String parameters.  No TomlValue, no constructor
-  -- binding beyond plain tuples — RC-safe under compilation.
-  pfn scan(lines : List(String), section : String,
-           content_dir : String, output_dir : String, static_dir : String,
-           title : String, base_url : String) : Config.Site do
+  -- Scan the config line by line, tracking the current [section] and the five
+  -- target fields in a single bundled accumulator (see the module-level note).
+  pfn scan(lines : List(String), acc : Acc) : Config.Site do
     match lines do
     Nil ->
-      { content_dir: content_dir, output_dir: output_dir, static_dir: static_dir,
-        title: title, base_url: base_url }
+      { content_dir: acc.content_dir, output_dir: acc.output_dir, static_dir: acc.static_dir,
+        title: acc.title, base_url: acc.base_url }
     Cons(line, rest) -> do
       let t = String.trim(line)
       if is_header(t) do
-        scan(rest, header_name(t), content_dir, output_dir, static_dir, title, base_url)
+        scan(rest, { section: header_name(t), content_dir: acc.content_dir, output_dir: acc.output_dir,
+                      static_dir: acc.static_dir, title: acc.title, base_url: acc.base_url })
       else
         match parse_kv(t) do
-        None ->
-          scan(rest, section, content_dir, output_dir, static_dir, title, base_url)
+        None -> scan(rest, acc)
         Some(kv) ->
           match kv do
-          (k, v) ->
-            match assign(section, k, v, content_dir, output_dir, static_dir, title, base_url) do
-            (c, o, s, ti, b) -> scan(rest, section, c, o, s, ti, b)
-            end
+          (k, v) -> scan(rest, assign(acc, k, v))
           end
         end
       end
@@ -116,19 +137,30 @@ mod SiteConfig do
     end
   end
 
-  -- Replace whichever field the "section"+"key" names (or leave all unchanged for
-  -- an unrecognised pair).  Uses string-equality on the fully-qualified key — no
-  -- tuple-pattern matching — which the native backend handles reliably.
-  pfn assign(section : String, key : String, val : String,
-             content_dir : String, output_dir : String, static_dir : String,
-             title : String, base_url : String) do
-    let fq = section ++ "." ++ key
-    if fq == "build.content_dir" do (val, output_dir, static_dir, title, base_url)
-    else if fq == "build.output_dir" do (content_dir, val, static_dir, title, base_url)
-    else if fq == "build.static_dir" do (content_dir, output_dir, val, title, base_url)
-    else if fq == "site.title" do (content_dir, output_dir, static_dir, val, base_url)
-    else if fq == "site.base_url" do (content_dir, output_dir, static_dir, title, val)
-    else (content_dir, output_dir, static_dir, title, base_url)
+  -- Replace whichever field the "section"+"key" names (or leave the accumulator
+  -- unchanged for an unrecognised pair).  Uses string-equality on the
+  -- fully-qualified key — no tuple-pattern matching — which the native backend
+  -- handles reliably.  Always reconstructs the WHOLE accumulator (see the
+  -- module-level implementation note on why this can't split into a returned
+  -- tuple threaded alongside `section`).
+  pfn assign(acc : Acc, key : String, val : String) : Acc do
+    let fq = acc.section ++ "." ++ key
+    if fq == "build.content_dir" do
+      { section: acc.section, content_dir: val, output_dir: acc.output_dir,
+        static_dir: acc.static_dir, title: acc.title, base_url: acc.base_url }
+    else if fq == "build.output_dir" do
+      { section: acc.section, content_dir: acc.content_dir, output_dir: val,
+        static_dir: acc.static_dir, title: acc.title, base_url: acc.base_url }
+    else if fq == "build.static_dir" do
+      { section: acc.section, content_dir: acc.content_dir, output_dir: acc.output_dir,
+        static_dir: val, title: acc.title, base_url: acc.base_url }
+    else if fq == "site.title" do
+      { section: acc.section, content_dir: acc.content_dir, output_dir: acc.output_dir,
+        static_dir: acc.static_dir, title: val, base_url: acc.base_url }
+    else if fq == "site.base_url" do
+      { section: acc.section, content_dir: acc.content_dir, output_dir: acc.output_dir,
+        static_dir: acc.static_dir, title: acc.title, base_url: val }
+    else acc
     end end end end end
   end
 

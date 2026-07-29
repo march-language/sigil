@@ -194,7 +194,11 @@ mod TestMd do
   describe "Markdown autolinks" do
     test "absolute URL autolink" do
       let html = IOList.to_string(MdRender.render(MdBlock.parse("see <https://example.com> now")))
-      assert (String.contains(html, "<a href=\"https://example.com\">https://example.com</a>"))
+      -- External links also get rel="noopener noreferrer" (see render.march's
+      -- Link case), so check the href and the link text/close separately
+      -- rather than the exact opening tag.
+      assert (String.contains(html, "<a href=\"https://example.com\""))
+      assert (String.contains(html, ">https://example.com</a>"))
     end
     test "email autolink becomes mailto" do
       let html = IOList.to_string(MdRender.render(MdBlock.parse("mail <a@b.com> please")))
@@ -404,11 +408,17 @@ mod TestMd do
 
     test "emphasis with surrounding text" do
       let result = MdInline.parse("a *b* c")
+      -- The inner match is pulled into its own `let` rather than nested
+      -- inside the outer match's arm body: a `match` nested in another
+      -- match's arm, followed by more of the arm's `&&` chain, hits a
+      -- march parser conflict over the inner match's arm separator.
       assert (match result do
               Cons(Inline.Text(before), Cons(Emph(inner), Cons(Inline.Text(after), Nil))) ->
-                before == "a " &&
-                (match inner do Cons(Inline.Text(t), Nil) -> t == "b" | _ -> false end) &&
-                after == " c"
+                let inner_ok = match inner do
+                  Cons(Inline.Text(t), Nil) -> t == "b"
+                  _ -> false
+                end
+                before == "a " && inner_ok && after == " c"
               _ -> false
               end)
     end

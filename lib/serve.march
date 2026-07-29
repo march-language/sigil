@@ -2,6 +2,7 @@ mod Serve do
 
   needs IO.Console
   needs IO.NetListen
+  needs IO.Spawn
 
   pfn reload_script() : String do
     "<script>" ++
