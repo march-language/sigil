@@ -3,6 +3,9 @@ mod Serve do
   needs IO.Console
   needs IO.NetListen
   needs IO.Spawn
+  needs IO.FileRead
+  needs IO.Process
+  needs IO.WebSocket
 
   pfn reload_script() : String do
     "<script>" ++

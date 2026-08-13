@@ -5,6 +5,8 @@
 -- docs mode (Build.run_pages) skips it.
 mod Collections do
 
+  needs IO.FileWrite
+
   pfn fmt_err(e) : String do
     to_string(e)
   end

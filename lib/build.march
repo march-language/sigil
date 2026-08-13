@@ -2,6 +2,8 @@ mod Build do
 
   needs IO.Console
   needs IO.Spawn
+  needs IO.FileRead
+  needs IO.FileWrite
 
   -- Wrapper for a user-supplied layout function.
   -- Uses a nominal type to avoid March's curried function-type annotation ambiguity.

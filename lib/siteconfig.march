@@ -39,6 +39,8 @@
 
 mod SiteConfig do
 
+  needs IO.FileRead
+
   -- Default config file name, looked up relative to the current working dir.
   fn default_path() : String do "sigil.toml" end
 

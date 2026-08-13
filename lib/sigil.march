@@ -4,6 +4,13 @@
 mod Ssg do
 
   needs IO.Console
+  needs IO.Clock
+  needs IO.FileRead
+  needs IO.FileWrite
+  needs IO.NetListen
+  needs IO.Process
+  needs IO.Spawn
+  needs IO.WebSocket
 
   fn parse_args(argv : List(String)) : Result(Config.Site, String) do
     -- Drop the executable (and the script path in interpreted mode).
@@ -79,7 +86,7 @@ mod Ssg do
     end
   end
 
-  fn main() do
+  fn main(_cap_clock : Cap(IO.Clock), _cap_console : Cap(IO.Console), _cap_fileread : Cap(IO.FileRead), _cap_filewrite : Cap(IO.FileWrite), _cap_netlisten : Cap(IO.NetListen), _cap_process : Cap(IO.Process), _cap_spawn : Cap(IO.Spawn), _cap_websocket : Cap(IO.WebSocket)) do
     -- Route on the first non-path argument.
     -- System.argv() called in each branch separately to avoid RC issues.
     let args = drop_paths(System.argv())

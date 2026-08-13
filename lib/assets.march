@@ -1,5 +1,8 @@
 mod Assets do
 
+  needs IO.FileRead
+  needs IO.FileWrite
+
   pfn fmt_err(e) : String do
     to_string(e)
   end
