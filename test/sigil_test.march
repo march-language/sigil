@@ -1,4 +1,5 @@
 mod TestSigil do
+  needs IO.FileWrite
 
   -- RC helper: derive a fresh independent copy of the path for each consuming
   -- call site using "" ++ p so that each stdlib I/O function gets its own
