@@ -3,6 +3,8 @@
 mod Deploy do
 
   needs IO.Console
+  needs IO.Process
+  needs IO.FileRead
 
   -- Deploy the build output directory to a Cloudflare Pages project.
   -- Requires `wrangler` to be installed and authenticated:

@@ -5,6 +5,7 @@
 mod Hook do
 
   needs IO.Console
+  needs IO.Process
 
   -- A build hook: a deferred Unit → Result action.  Use Hook.shell or
   -- Hook.march to construct one; use Hook.run / Hook.run_all to execute.
