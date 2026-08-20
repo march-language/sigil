@@ -4,6 +4,7 @@
 mod Esbuild do
 
   needs IO.Console
+  needs IO.Process
 
   -- Bundle an entry point (CSS or JS) to an output file.
   -- Equivalent to: npx esbuild <entry> --bundle --outfile=<output>
